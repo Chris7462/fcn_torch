@@ -2,6 +2,9 @@
 
 Complete PyTorch dataloader implementation for the CamVid semantic segmentation dataset.
 
+## Data Download
+You can find the raw images and labeled images at here: [CamVid](https://datasets.cms.waikato.ac.nz/ufdl/camvid/)
+
 ## Dataset Structure
 
 ```
@@ -40,14 +43,13 @@ Complete PyTorch dataloader implementation for the CamVid semantic segmentation 
 ## Usage
 
 ### Step 1: Prepare the Dataset
+Symbolic link the CamVid folder to this folder. The CamVid folder most contains:
+* 701_StillsRaw_full: The raw images
+* LabeledApproved_full: The labeled images
+* label_colors.txt: The classname mapping
 
 ```bash
-# Edit paths in prepare_camvid_data.py to point to your data:
-# RAW_IMAGE_DIR = "/data/CamVid/701_StillsRaw_full"
-# LABEL_DIR = "/data/CamVid/LabeledApproved_full"
-# LABEL_COLORS_FILE = "/data/CamVid/label_colors.txt"
-# OUTPUT_DIR = "/data/CamVid/splits"
-
+ln -s CamVid .
 python prepare_camvid_data.py
 ```
 

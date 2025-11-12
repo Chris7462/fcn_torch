@@ -10,16 +10,14 @@ CamVid Dataset Preparation Script
 import os
 import numpy as np
 from PIL import Image
-from pathlib import Path
 import random
-from collections import defaultdict
 from tqdm import tqdm
 
 # Configuration
-RAW_IMAGE_DIR = "/mnt/user-data/uploads"  # For testing with uploaded files
-LABEL_DIR = "/mnt/user-data/uploads"
-LABEL_COLORS_FILE = "/mnt/user-data/uploads/label_colors.txt"
-OUTPUT_DIR = "/home/claude/camvid_splits"
+RAW_IMAGE_DIR = "./CamVid/701_StillsRaw_full"  # For testing with uploaded files
+LABEL_DIR = "./CamVid/LabeledApproved_full"
+LABEL_COLORS_FILE = "./CamVid/label_colors.txt"
+OUTPUT_DIR = "./CamVid/splits"
 
 # Split ratios
 TRAIN_RATIO = 0.7
@@ -34,13 +32,14 @@ def load_color_mapping(label_colors_file):
     class_names = []
 
     with open(label_colors_file, 'r') as f:
-        for idx, line in enumerate(f):
-            parts = line.strip().split('\t')
-            if len(parts) == 2:
-                rgb_str, class_name = parts
-                r, g, b = map(int, rgb_str.split())
-                color_to_class[(r, g, b)] = idx
-                class_names.append(class_name)
+        for line in f:
+            parts = line.strip().split()
+            if len(parts) < 4:
+                continue  # skip invalid lines
+            r, g, b = map(int, parts[:3])
+            class_name = ' '.join(parts[3:])
+            color_to_class[(r, g, b)] = len(class_names)
+            class_names.append(class_name)
 
     return color_to_class, class_names
 
