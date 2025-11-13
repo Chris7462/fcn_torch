@@ -73,7 +73,7 @@ dataloaders = create_dataloaders(
     dataset_info_path='/data/CamVid/splits/dataset_info.json',
     batch_size=8,
     num_workers=4,
-    target_size=(480, 360)
+    target_size=(960, 720)  # Full resolution (change to (480, 360) for 4x faster training)
 )
 
 train_loader = dataloaders['train']
@@ -103,13 +103,13 @@ for batch in train_loader:
 ## Key Features
 
 ### Data Augmentation (Training)
-- Resize to 480x360
+- Resize to configured size (default: 960x720, can use 480x360 for faster training)
 - Random horizontal flip
 - Color jittering (brightness, contrast, saturation, hue)
 - Normalization
 
 ### Validation/Test
-- Resize to 480x360
+- Resize to configured size
 - Normalization only (no augmentation)
 
 ### Class Handling
@@ -124,15 +124,30 @@ for batch in train_loader:
 ## Dataset Info
 
 - **Total classes**: 32 (including Void)
-- **Image size**: 960x720 (original) → 480x360 (resized for training)
+- **Image size**: 960x720 (original, default for training)
+  - Can configure to 480x360 for 4x faster training
 - **Format**: RGB images + RGB color-coded masks
 - **Split**: 70% train, 15% val, 15% test
+
+## Image Resolution Options
+
+**960x720 (Full Resolution - Default):**
+- ✅ Maximum accuracy
+- ✅ Better for small objects (pedestrians, signs)
+- ❌ Slower training (requires more GPU memory)
+
+**480x360 (Half Resolution):**
+- ✅ 4x faster training
+- ✅ Lower GPU memory usage
+- ❌ ~1-3% accuracy drop
+
+Change `TARGET_SIZE` in `prepare_camvid_data.py` and `target_size` parameter in dataloaders.
 
 ## Classes
 
 See `label_colors.txt` for the complete list. Main classes include:
 - Sky, Building, Road, Sidewalk, Tree
-- Car, Truck_Bus, Pedestrian, Bicyclist
+- Car, TruckBus, Pedestrian, Bicyclist
 - Sign, Fence, Pole, Traffic Light
 - And more...
 

@@ -15,7 +15,7 @@ from tqdm import tqdm
 
 # Configuration
 RAW_IMAGE_DIR = "./CamVid/701_StillsRaw_full"  # For testing with uploaded files
-LABEL_DIR = "./CamVid/LabeledApproved_full"
+LABEL_IMAGE_DIR = "./CamVid/LabeledApproved_full"
 LABEL_COLORS_FILE = "./CamVid/label_colors.txt"
 OUTPUT_DIR = "./CamVid/splits"
 
@@ -24,6 +24,9 @@ TRAIN_RATIO = 0.7
 VAL_RATIO = 0.15
 TEST_RATIO = 0.15
 RANDOM_SEED = 42
+
+# Target image size (width, height) for training
+TARGET_SIZE = (960, 720)  # Use original resolution by default, change to (480, 360) for faster training
 
 
 def load_color_mapping(label_colors_file):
@@ -51,7 +54,7 @@ def find_image_pairs(raw_dir, label_dir):
 
     # Get all raw images
     for f in os.listdir(raw_dir):
-        if f.endswith('.png') and not f.endswith('_L.png'):
+        if f.endswith('.png'):
             raw_files.add(f)
 
     # Get all label images
@@ -68,11 +71,12 @@ def find_image_pairs(raw_dir, label_dir):
 
 
 def create_splits(file_list, train_ratio, val_ratio, test_ratio, seed=42):
-    """Split files into train/val/test sets"""
-    random.seed(seed)
-    np.random.seed(seed)
+    """Split files into train/val/test sets with validation"""
+    ratio_sum = train_ratio + val_ratio + test_ratio
+    assert abs(ratio_sum - 1.0) < 1e-6, f'Ratios must sum to 1.0, got {ratio_sum}'
 
     # Shuffle
+    random.seed(seed)
     files = file_list.copy()
     random.shuffle(files)
 
@@ -101,14 +105,14 @@ def rgb_to_class_index(mask_rgb, color_to_class, ignore_index=255):
     return mask_indexed
 
 
-def compute_class_distribution(file_list, label_dir, color_to_class, num_classes):
+def compute_class_distribution(file_list, label_image_dir, color_to_class, num_classes):
     """Compute pixel count for each class"""
     class_counts = np.zeros(num_classes, dtype=np.int64)
 
     print("Computing class distribution...")
     for filename in tqdm(file_list):
         label_filename = filename[:-4] + '_L.png'
-        label_path = os.path.join(label_dir, label_filename)
+        label_path = os.path.join(label_image_dir, label_filename)
 
         if os.path.exists(label_path):
             mask = np.array(Image.open(label_path))
@@ -121,9 +125,9 @@ def compute_class_distribution(file_list, label_dir, color_to_class, num_classes
     return class_counts
 
 
-def compute_image_statistics(file_list, raw_dir):
-    """Compute mean and std of training images"""
-    print("Computing image statistics (mean, std)...")
+def compute_image_statistics(file_list, raw_dir, target_size=(960, 720)):
+    """Compute mean and std of images at the target training size"""
+    print(f"Computing image statistics mean and std at size of {target_size[0]}x{target_size[1]}...")
 
     pixel_sum = np.zeros(3, dtype=np.float64)
     pixel_squared_sum = np.zeros(3, dtype=np.float64)
@@ -132,7 +136,11 @@ def compute_image_statistics(file_list, raw_dir):
     for filename in tqdm(file_list):
         img_path = os.path.join(raw_dir, filename)
         if os.path.exists(img_path):
-            img = np.array(Image.open(img_path)).astype(np.float64) / 255.0
+            img = Image.open(img_path)
+            # Resize to target training size BEFORE computing stats
+            img = img.resize(target_size, Image.BILINEAR)
+            img = np.array(img).astype(np.float64) / 255.0
+
             pixel_sum += img.sum(axis=(0, 1))
             pixel_squared_sum += (img ** 2).sum(axis=(0, 1))
             pixel_count += img.shape[0] * img.shape[1]
@@ -159,19 +167,19 @@ def save_split_files(output_dir, train_files, val_files, test_files):
     print(f"Split files saved to {output_dir}")
 
 
-def save_dataset_info(output_dir, color_to_class, class_names, mean, std, class_counts):
+def save_dataset_info(output_dir, color_to_class, class_names, mean, std, class_counts, target_size):
     """Save dataset metadata"""
     import json
 
     info = {
         'num_classes': len(class_names),
         'class_names': class_names,
+        'ignore_index': 255,
         'color_to_class': {str(k): v for k, v in color_to_class.items()},
         'mean': mean.tolist(),
         'std': std.tolist(),
         'class_counts': class_counts.tolist(),
-        'image_size': [480, 360],  # width x height
-        'ignore_index': 255
+        'image_size': list(target_size)  # [width, height]
     }
 
     with open(os.path.join(output_dir, 'dataset_info.json'), 'w') as f:
@@ -184,6 +192,7 @@ def main():
     print("=" * 60)
     print("CamVid Dataset Preparation")
     print("=" * 60)
+    print(f"Target training size: {TARGET_SIZE[0]}x{TARGET_SIZE[1]}")
 
     # Load color mapping
     print("\n1. Loading color mapping...")
@@ -192,7 +201,7 @@ def main():
 
     # Find image pairs
     print("\n2. Finding image-label pairs...")
-    paired_files = find_image_pairs(RAW_IMAGE_DIR, LABEL_DIR)
+    paired_files = find_image_pairs(RAW_IMAGE_DIR, LABEL_IMAGE_DIR)
     print(f"   Found {len(paired_files)} valid pairs")
 
     # Create splits
@@ -204,16 +213,16 @@ def main():
     print(f"   Val:   {len(val_files)} images")
     print(f"   Test:  {len(test_files)} images")
 
-    # Compute statistics on training set
+    # Compute statistics on training set at target size
     print("\n4. Computing dataset statistics...")
-    mean, std = compute_image_statistics(train_files, RAW_IMAGE_DIR)
+    mean, std = compute_image_statistics(train_files, RAW_IMAGE_DIR, TARGET_SIZE)
     print(f"   Mean: [{mean[0]:.4f}, {mean[1]:.4f}, {mean[2]:.4f}]")
     print(f"   Std:  [{std[0]:.4f}, {std[1]:.4f}, {std[2]:.4f}]")
 
     # Compute class distribution
     print("\n5. Computing class distribution...")
     class_counts = compute_class_distribution(
-        train_files, LABEL_DIR, color_to_class, len(class_names)
+        train_files, LABEL_IMAGE_DIR, color_to_class, len(class_names)
     )
 
     # Show class distribution
@@ -226,10 +235,11 @@ def main():
     # Save everything
     print("\n6. Saving files...")
     save_split_files(OUTPUT_DIR, train_files, val_files, test_files)
-    save_dataset_info(OUTPUT_DIR, color_to_class, class_names, mean, std, class_counts)
+    save_dataset_info(OUTPUT_DIR, color_to_class, class_names, mean, std, class_counts, TARGET_SIZE)
 
     print("\n" + "=" * 60)
     print("Preparation complete!")
+    print(f"Images will be resized to {TARGET_SIZE[0]}x{TARGET_SIZE[1]} during training")
     print("=" * 60)
 
 

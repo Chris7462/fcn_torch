@@ -29,13 +29,13 @@ class CamVidDataset(Dataset):
         self,
         split_file,
         raw_image_dir,
-        label_dir,
+        label_image_dir,
         dataset_info_path,
         transform=None,
-        target_size=(480, 360)
+        target_size=(960, 720)
     ):
         self.raw_image_dir = raw_image_dir
-        self.label_dir = label_dir
+        self.label_image_dir = label_image_dir
         self.transform = transform
         self.target_size = target_size  # (width, height)
 
@@ -106,7 +106,7 @@ class CamVidDataset(Dataset):
         }
 
 
-def get_training_transform(target_size=(480, 360), mean=None, std=None):
+def get_training_transform(target_size=(960, 720), mean=None, std=None):
     """
     Get training transforms with data augmentation
 
@@ -129,7 +129,7 @@ def get_training_transform(target_size=(480, 360), mean=None, std=None):
     ])
 
 
-def get_validation_transform(target_size=(480, 360), mean=None, std=None):
+def get_validation_transform(target_size=(960, 720), mean=None, std=None):
     """
     Get validation/test transforms (no augmentation)
 
@@ -195,8 +195,8 @@ if __name__ == '__main__':
         raw_image_dir='/mnt/user-data/uploads',
         label_dir='/mnt/user-data/uploads',
         dataset_info_path=dataset_info_path,
-        transform=get_training_transform(target_size=(480, 360), mean=mean, std=std),
-        target_size=(480, 360)
+        transform=get_training_transform(target_size=(960, 720), mean=mean, std=std),
+        target_size=(960, 720)
     )
 
     print(f"Dataset size: {len(train_dataset)}")
