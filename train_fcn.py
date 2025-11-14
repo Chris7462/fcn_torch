@@ -30,16 +30,16 @@ BACKBONE = 'vgg16'  # 'vgg16', 'resnet50' (TODO), 'efficientnet' (TODO)
 N_CLASS = 32
 
 # Training settings (following original FCN paper)
-BATCH_SIZE = 4
+BATCH_SIZE = 16
 EPOCHS = 100
-LR = 1e-4
+LR = 1e-3
 MOMENTUM = 0.9
 WEIGHT_DECAY = 5e-4
 STEP_SIZE = 50
 GAMMA = 0.5
 
 # Data settings
-TARGET_SIZE = (960, 704)  # (width, height) - use (480, 360) for faster training
+TARGET_SIZE = (480, 352)  # (width, height) - resize to 480x360 then centercrop to 480x352
 NUM_WORKERS = 4
 
 # Output directories
@@ -200,8 +200,7 @@ def main():
         dataset_info_path=DATASET_INFO_PATH,
         batch_size=BATCH_SIZE,
         num_workers=NUM_WORKERS,
-        target_size=TARGET_SIZE,
-        use_computed_stats=True
+        target_size=TARGET_SIZE
     )
 
     train_loader = dataloaders['train']

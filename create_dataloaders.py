@@ -20,6 +20,7 @@ def get_training_transform(target_size, mean, std):
         std: RGB std for normalization (list of 3 floats)
     """
     return A.Compose([
+        A.Resize(height=360, width=480),
         A.CenterCrop(height=target_size[1], width=target_size[0]),
         A.HorizontalFlip(p=0.5),
         A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1, p=0.5),
@@ -38,6 +39,7 @@ def get_validation_transform(target_size, mean, std):
         std: RGB std for normalization (list of 3 floats)
     """
     return A.Compose([
+        A.Resize(height=360, width=480),
         A.CenterCrop(height=target_size[1], width=target_size[0]),
         A.Normalize(mean=mean, std=std),
         ToTensorV2()
@@ -51,8 +53,7 @@ def create_dataloaders(
     dataset_info_path,
     batch_size=8,
     num_workers=4,
-    target_size=(960, 704),
-    use_computed_stats=True
+    target_size=(480, 352)
 ):
     """
     Create train, validation, and test dataloaders
@@ -64,8 +65,7 @@ def create_dataloaders(
         dataset_info_path: Path to dataset_info.json
         batch_size: Batch size for training
         num_workers: Number of workers for data loading
-        target_size: (width, height) tuple for center cropping (default: 960x704, divisible by 32)
-        use_computed_stats: If True, use computed mean/std from dataset_info.json
+        target_size: (width, height) tuple for center cropping (default: 480x352, divisible by 32)
 
     Returns:
         dict with 'train', 'val', 'test' dataloaders and 'class_weights'
@@ -75,13 +75,9 @@ def create_dataloaders(
     with open(dataset_info_path, 'r') as f:
         info = json.load(f)
 
-    if use_computed_stats:
-        mean = info.get('mean', [0.485, 0.456, 0.406])
-        std = info.get('std', [0.229, 0.224, 0.225])
-    else:
-        # Use ImageNet stats
-        mean = [0.485, 0.456, 0.406]
-        std = [0.229, 0.224, 0.225]
+    # Fall back to ImageNet stats if not provided
+    mean = info.get('mean', [0.485, 0.456, 0.406])
+    std = info.get('std', [0.229, 0.224, 0.225])
 
     print(f"Using normalization - Mean: {mean}, Std: {std}")
 
@@ -177,7 +173,7 @@ if __name__ == '__main__':
         dataset_info_path=DATASET_INFO_PATH,
         batch_size=8,
         num_workers=4,
-        target_size=(960, 704),
+        target_size=(480, 352),
         use_computed_stats=True
     )
 

@@ -26,7 +26,7 @@ TEST_RATIO = 0.15
 RANDOM_SEED = 42
 
 # Target image size (width, height) for training
-TARGET_SIZE = (960, 704)  # The original size is 960x704, centercrop to 960x704. Divisible by 32
+TARGET_SIZE = (480, 352)  # Resize to 480x360, then centercrop to 480x352. Divisible by 32
 
 
 def load_color_mapping(label_colors_file):
@@ -155,8 +155,8 @@ def compute_class_weights(class_counts):
     return class_weights.tolist()
 
 
-def compute_image_statistics(file_list, raw_dir, target_size=(960, 704)):
-    """Compute mean and std of images at the target training size using center crop"""
+def compute_image_statistics(file_list, raw_dir, target_size=(480, 352)):
+    """Compute mean and std of images at the target training size using resize then center crop"""
     print(f"Computing image statistics mean and std at size of {target_size[0]}x{target_size[1]}...")
 
     pixel_sum = np.zeros(3, dtype=np.float64)
@@ -167,6 +167,9 @@ def compute_image_statistics(file_list, raw_dir, target_size=(960, 704)):
         img_path = os.path.join(raw_dir, filename)
         if os.path.exists(img_path):
             img = Image.open(img_path)
+
+            # Resize to 480x360
+            img = img.resize((480, 360), Image.BILINEAR)
 
             # Center crop to target size
             width, height = img.size
@@ -230,7 +233,7 @@ def main():
     print("=" * 60)
     print("CamVid Dataset Preparation")
     print("=" * 60)
-    print(f"Images will be center-cropped to {TARGET_SIZE[0]}x{TARGET_SIZE[1]}")
+    print(f"Images will be resized to 480x360 then center-cropped to {TARGET_SIZE[0]}x{TARGET_SIZE[1]}")
 
     # Load color mapping
     print("\n1. Loading color mapping...")
