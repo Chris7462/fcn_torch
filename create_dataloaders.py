@@ -20,7 +20,7 @@ def get_training_transform(target_size, mean, std):
         std: RGB std for normalization (list of 3 floats)
     """
     return A.Compose([
-        A.Resize(height=target_size[1], width=target_size[0]),
+        A.CenterCrop(height=target_size[1], width=target_size[0]),
         A.HorizontalFlip(p=0.5),
         A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1, p=0.5),
         A.Normalize(mean=mean, std=std),
@@ -38,7 +38,7 @@ def get_validation_transform(target_size, mean, std):
         std: RGB std for normalization (list of 3 floats)
     """
     return A.Compose([
-        A.Resize(height=target_size[1], width=target_size[0]),
+        A.CenterCrop(height=target_size[1], width=target_size[0]),
         A.Normalize(mean=mean, std=std),
         ToTensorV2()
     ])
@@ -51,7 +51,7 @@ def create_dataloaders(
     dataset_info_path,
     batch_size=8,
     num_workers=4,
-    target_size=(960, 720),
+    target_size=(960, 704),
     use_computed_stats=True
 ):
     """
@@ -64,7 +64,7 @@ def create_dataloaders(
         dataset_info_path: Path to dataset_info.json
         batch_size: Batch size for training
         num_workers: Number of workers for data loading
-        target_size: (width, height) tuple for resizing
+        target_size: (width, height) tuple for center cropping (default: 960x704, divisible by 32)
         use_computed_stats: If True, use computed mean/std from dataset_info.json
 
     Returns:
@@ -177,7 +177,7 @@ if __name__ == '__main__':
         dataset_info_path=DATASET_INFO_PATH,
         batch_size=8,
         num_workers=4,
-        target_size=(480, 360),
+        target_size=(960, 704),
         use_computed_stats=True
     )
 
@@ -187,7 +187,7 @@ if __name__ == '__main__':
     test_loader = dataloaders['test']
     class_weights = dataloaders['class_weights']
 
-    print(f"\nClass weights shape: {class_weights.shape}")
+    print(f"\nClass weights shape: {len(class_weights)}")
     print(f"Number of classes: {dataloaders['num_classes']}")
 
     # Example: iterate through one batch

@@ -14,7 +14,7 @@ import random
 from tqdm import tqdm
 
 # Configuration
-RAW_IMAGE_DIR = "./CamVid/701_StillsRaw_full"  # For testing with uploaded files
+RAW_IMAGE_DIR = "./CamVid/701_StillsRaw_full"
 LABEL_IMAGE_DIR = "./CamVid/LabeledApproved_full"
 LABEL_COLORS_FILE = "./CamVid/label_colors.txt"
 OUTPUT_DIR = "./CamVid/splits"
@@ -26,7 +26,7 @@ TEST_RATIO = 0.15
 RANDOM_SEED = 42
 
 # Target image size (width, height) for training
-TARGET_SIZE = (960, 720)  # Use original resolution by default, change to (480, 360) for faster training
+TARGET_SIZE = (960, 704)  # The original size is 960x704, centercrop to 960x704. Divisible by 32
 
 
 def load_color_mapping(label_colors_file):
@@ -155,8 +155,8 @@ def compute_class_weights(class_counts):
     return class_weights.tolist()
 
 
-def compute_image_statistics(file_list, raw_dir, target_size=(960, 720)):
-    """Compute mean and std of images at the target training size"""
+def compute_image_statistics(file_list, raw_dir, target_size=(960, 704)):
+    """Compute mean and std of images at the target training size using center crop"""
     print(f"Computing image statistics mean and std at size of {target_size[0]}x{target_size[1]}...")
 
     pixel_sum = np.zeros(3, dtype=np.float64)
@@ -167,8 +167,15 @@ def compute_image_statistics(file_list, raw_dir, target_size=(960, 720)):
         img_path = os.path.join(raw_dir, filename)
         if os.path.exists(img_path):
             img = Image.open(img_path)
-            # Resize to target training size BEFORE computing stats
-            img = img.resize(target_size, Image.BILINEAR)
+            
+            # Center crop to target size
+            width, height = img.size
+            left = (width - target_size[0]) // 2
+            top = (height - target_size[1]) // 2
+            right = left + target_size[0]
+            bottom = top + target_size[1]
+            img = img.crop((left, top, right, bottom))
+
             img = np.array(img).astype(np.float64) / 255.0
 
             pixel_sum += img.sum(axis=(0, 1))
@@ -244,20 +251,24 @@ def main():
     print(f"   Val:   {len(val_files)} images")
     print(f"   Test:  {len(test_files)} images")
 
+    # Save split files first (needed for dataloader)
+    print("\n4. Saving split files...")
+    save_split_files(OUTPUT_DIR, train_files, val_files, test_files)
+
     # Compute statistics on training set at target size
-    print("\n4. Computing dataset statistics...")
+    print("\n5. Computing dataset statistics...")
     mean, std = compute_image_statistics(train_files, RAW_IMAGE_DIR, TARGET_SIZE)
     print(f"   Mean: [{mean[0]:.4f}, {mean[1]:.4f}, {mean[2]:.4f}]")
     print(f"   Std:  [{std[0]:.4f}, {std[1]:.4f}, {std[2]:.4f}]")
 
     # Compute class distribution
-    print("\n5. Computing class distribution...")
+    print("\n6. Computing class distribution...")
     class_counts = compute_class_distribution(
         train_files, LABEL_IMAGE_DIR, color_to_class, len(class_names)
     )
 
     # Compute class weights
-    print("\n6. Computing class weights...")
+    print("\n7. Computing class weights...")
     class_weights = compute_class_weights(class_counts)
 
     # Show class distribution
@@ -268,13 +279,12 @@ def main():
         print(f"   {idx:2d}. {name:20s}: {count:10d} ({percentage:5.2f}%) weight: {weight:.4f}")
 
     # Save everything
-    print("\n7. Saving files...")
-    save_split_files(OUTPUT_DIR, train_files, val_files, test_files)
+    print("\n8. Saving dataset info...")
     save_dataset_info(OUTPUT_DIR, color_to_class, class_names, mean, std, class_counts, class_weights, TARGET_SIZE)
 
     print("\n" + "=" * 60)
     print("Preparation complete!")
-    print(f"Images will be resized to {TARGET_SIZE[0]}x{TARGET_SIZE[1]} during training")
+    print(f"Images will be center-cropped to {TARGET_SIZE[0]}x{TARGET_SIZE[1]} during training")
     print("=" * 60)
 
 
