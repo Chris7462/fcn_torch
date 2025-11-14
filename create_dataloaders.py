@@ -23,6 +23,8 @@ def get_training_transform(target_size, mean, std):
         A.Resize(height=360, width=480),
         A.CenterCrop(height=target_size[1], width=target_size[0]),
         A.HorizontalFlip(p=0.5),
+        # A.ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.1, rotate_limit=10, border_mode=0, p=0.5),
+        # A.RandomBrightnessContrast(brightness_limit=0.3, contrast_limit=0.3, p=0.7),
         A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1, p=0.5),
         A.Normalize(mean=mean, std=std),
         ToTensorV2()

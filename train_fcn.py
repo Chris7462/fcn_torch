@@ -27,11 +27,11 @@ DATASET_INFO_PATH = './CamVid/splits/dataset_info.json'
 
 # Model settings
 BACKBONE = 'vgg16'  # 'vgg16', 'resnet50' (TODO), 'efficientnet' (TODO)
-N_CLASS = 32
+N_CLASS = 11
 
 # Training settings (following original FCN paper)
 BATCH_SIZE = 16
-EPOCHS = 100
+EPOCHS = 200
 LR = 1e-3
 MOMENTUM = 0.9
 WEIGHT_DECAY = 5e-4
@@ -184,7 +184,46 @@ def plot_training_history(history, save_dir, experiment_name):
     plt.close()
 
 
-def main():
+def load_checkpoint(checkpoint_path, model, optimizer, scheduler, device):
+    """
+    Load checkpoint to resume training
+
+    Args:
+        checkpoint_path: Path to checkpoint file
+        model: Model to load state into
+        optimizer: Optimizer to load state into
+        scheduler: Scheduler to load state into
+        device: Device to map checkpoint to
+
+    Returns:
+        start_epoch: Epoch to resume from
+        best_miou: Best mIoU achieved so far
+        history: Training history dict
+    """
+    print(f"\n[INFO] Loading checkpoint from {checkpoint_path}...")
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+
+    model.load_state_dict(checkpoint['model_state_dict'])
+    print('[INFO] Model state loaded')
+
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    print('[INFO] Optimizer state loaded')
+
+    if scheduler and checkpoint['scheduler_state_dict']:
+        scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+        print('[INFO] Scheduler state loaded')
+
+    start_epoch = checkpoint['epoch']
+    best_miou = checkpoint['best_miou']
+    history = checkpoint['history']
+
+    print(f"[INFO] Resuming from epoch {start_epoch}")
+    print(f"[INFO] Best mIoU so far: {best_miou:.4f}")
+
+    return start_epoch, best_miou, history
+
+
+def main(args=None):
     # Set device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
@@ -228,7 +267,9 @@ def main():
     print(f"  Weight decay: {WEIGHT_DECAY}")
     print(f"  LR Scheduler: StepLR (step_size={STEP_SIZE}, gamma={GAMMA})")
 
-    # Training history
+    # Training state
+    start_epoch = 0
+    best_miou = 0.0
     history = {
         'train_loss': [],
         'train_pixel_acc': [],
@@ -237,14 +278,24 @@ def main():
         'val_pixel_acc': []
     }
 
-    best_miou = 0.0
+    # Load checkpoint if resuming
+    if args and args.resume:
+        start_epoch, best_miou, history = load_checkpoint(
+            args.resume, model, optimizer, scheduler, device
+        )
+
+        # Override learning rate if specified
+        if args.override_lr is not None:
+            for param_group in optimizer.param_groups:
+                param_group['lr'] = args.override_lr
+            print(f'[INFO] Overriding learning rate to {args.override_lr}')
 
     print("\n" + "="*80)
     print("Starting Training")
     print("="*80)
 
     # Training loop
-    for epoch in range(EPOCHS):
+    for epoch in range(start_epoch, EPOCHS):
         epoch_start = time.time()
 
         # Train
@@ -280,19 +331,39 @@ def main():
         print(f"  Val mIoU: {val_miou:.4f}")
         print(f"  Val Pixel Acc: {val_pixel_acc:.4f}")
 
-        # Save best model
-        if val_miou > best_miou:
+        # Check if this is the best model
+        is_best = val_miou > best_miou
+        if is_best:
             best_miou = val_miou
-            model_path = os.path.join(MODEL_DIR, f'{EXPERIMENT_NAME}_best.pth')
-            torch.save({
-                'epoch': epoch,
-                'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'scheduler_state_dict': scheduler.state_dict(),
-                'best_miou': best_miou,
-                'history': history
-            }, model_path)
+
+        # Check if periodic checkpoint (every 10 epochs)
+        is_periodic = (epoch + 1) % 10 == 0
+
+        # Prepare checkpoint
+        checkpoint = {
+            'epoch': epoch + 1,  # Next epoch to resume from
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'scheduler_state_dict': scheduler.state_dict() if scheduler else None,
+            'best_miou': best_miou,
+            'history': history
+        }
+
+        # Always save last checkpoint
+        last_model_path = os.path.join(MODEL_DIR, f'{EXPERIMENT_NAME}_last.pth')
+        torch.save(checkpoint, last_model_path)
+
+        # Save best checkpoint
+        if is_best:
+            best_model_path = os.path.join(MODEL_DIR, f'{EXPERIMENT_NAME}_best.pth')
+            torch.save(checkpoint, best_model_path)
             print(f"  ✓ Best model saved! (mIoU: {best_miou:.4f})")
+
+        # Save periodic checkpoint (every 10 epochs)
+        if is_periodic:
+            periodic_path = os.path.join(MODEL_DIR, f'{EXPERIMENT_NAME}_epoch_{epoch+1}.pth')
+            torch.save(checkpoint, periodic_path)
+            print(f"  ✓ Periodic checkpoint saved (epoch {epoch+1})")
 
         # Plot training history after each epoch
         plot_training_history(history, PLOT_DIR, EXPERIMENT_NAME)
@@ -316,11 +387,15 @@ def main():
     }, final_model_path)
     print(f"\n✓ Final model saved to: {final_model_path}")
 
-    # Save history as numpy
-    history_path = os.path.join(PLOT_DIR, f'{EXPERIMENT_NAME}_history.npz')
-    np.savez(history_path, **history)
-    print(f"✓ Training history saved to: {history_path}")
-
 
 if __name__ == '__main__':
-    main()
+    import argparse
+
+    ap = argparse.ArgumentParser(description='Train FCN model for semantic segmentation')
+    ap.add_argument('--resume', type=str, default=None,
+                    help='Path to checkpoint to resume training from')
+    ap.add_argument('--override-lr', type=float, default=None,
+                    help='Override learning rate when resuming training')
+    args = ap.parse_args()
+
+    main(args)
