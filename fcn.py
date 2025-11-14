@@ -117,12 +117,12 @@ def make_layers(cfg, batch_norm=False):
 def create_fcn_model(n_class, backbone='vgg16', pretrained=True):
     """
     Factory function to create FCN models with different backbones
-    
+
     Args:
         n_class: Number of output classes
         backbone: Backbone architecture ('vgg16', 'resnet50', 'efficientnet')
         pretrained: Whether to use pretrained weights
-        
+
     Returns:
         FCNs model
     """
@@ -130,15 +130,15 @@ def create_fcn_model(n_class, backbone='vgg16', pretrained=True):
         vgg_model = VGGNet(pretrained=pretrained, model='vgg16', requires_grad=True, remove_fc=True)
         fcn_model = FCNs(pretrained_net=vgg_model, n_class=n_class)
         return fcn_model
-    
+
     elif backbone == 'resnet50':
         # TODO: Implement ResNet50 backbone
         raise NotImplementedError("ResNet50 backbone not yet implemented")
-    
+
     elif backbone == 'efficientnet':
         # TODO: Implement EfficientNet backbone
         raise NotImplementedError("EfficientNet backbone not yet implemented")
-    
+
     else:
         raise ValueError(f"Unknown backbone: {backbone}")
 

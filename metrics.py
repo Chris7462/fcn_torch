@@ -9,12 +9,12 @@ import numpy as np
 def iou(pred, target, n_class):
     """
     Calculate class intersections over unions
-    
+
     Args:
         pred: prediction mask (H, W) with class indices
         target: ground truth mask (H, W) with class indices
         n_class: number of classes
-        
+
     Returns:
         list: IoU for each class (nan if class not present in ground truth)
     """
@@ -34,11 +34,11 @@ def iou(pred, target, n_class):
 def pixel_acc(pred, target):
     """
     Calculate pixel accuracy
-    
+
     Args:
         pred: prediction mask (H, W) with class indices
         target: ground truth mask (H, W) with class indices
-        
+
     Returns:
         float: pixel accuracy
     """
@@ -50,19 +50,19 @@ def pixel_acc(pred, target):
 def batch_iou(preds, targets, n_class):
     """
     Calculate IoU for a batch of predictions
-    
+
     Args:
         preds: batch of predictions (N, H, W)
         targets: batch of ground truth (N, H, W)
         n_class: number of classes
-        
+
     Returns:
         numpy array: mean IoU per class across the batch (n_class,)
     """
     total_ious = []
     for pred, target in zip(preds, targets):
         total_ious.append(iou(pred, target, n_class))
-    
+
     # n_class * batch_size
     total_ious = np.array(total_ious).T
     # Average across batch for each class
@@ -73,11 +73,11 @@ def batch_iou(preds, targets, n_class):
 def batch_pixel_acc(preds, targets):
     """
     Calculate pixel accuracy for a batch
-    
+
     Args:
         preds: batch of predictions (N, H, W)
         targets: batch of ground truth (N, H, W)
-        
+
     Returns:
         float: mean pixel accuracy across the batch
     """

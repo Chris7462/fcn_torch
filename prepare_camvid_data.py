@@ -167,7 +167,7 @@ def compute_image_statistics(file_list, raw_dir, target_size=(960, 704)):
         img_path = os.path.join(raw_dir, filename)
         if os.path.exists(img_path):
             img = Image.open(img_path)
-            
+
             # Center crop to target size
             width, height = img.size
             left = (width - target_size[0]) // 2
@@ -230,7 +230,7 @@ def main():
     print("=" * 60)
     print("CamVid Dataset Preparation")
     print("=" * 60)
-    print(f"Target training size: {TARGET_SIZE[0]}x{TARGET_SIZE[1]}")
+    print(f"Images will be center-cropped to {TARGET_SIZE[0]}x{TARGET_SIZE[1]}")
 
     # Load color mapping
     print("\n1. Loading color mapping...")
@@ -284,7 +284,6 @@ def main():
 
     print("\n" + "=" * 60)
     print("Preparation complete!")
-    print(f"Images will be center-cropped to {TARGET_SIZE[0]}x{TARGET_SIZE[1]} during training")
     print("=" * 60)
 
 
