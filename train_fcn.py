@@ -27,7 +27,7 @@ DATASET_INFO_PATH = './CamVid/splits/dataset_info.json'
 
 # Model settings
 BACKBONE = 'vgg16'  # 'vgg16', 'resnet50' (TODO), 'efficientnet' (TODO)
-N_CLASS = 32
+N_CLASS = 11
 
 # Training settings (following original FCN paper)
 BATCH_SIZE = 16

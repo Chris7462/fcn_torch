@@ -1,6 +1,6 @@
 # CamVid Dataset PyTorch DataLoader
 
-Complete PyTorch dataloader implementation for the CamVid semantic segmentation dataset.
+Complete PyTorch dataloader implementation for the CamVid semantic segmentation dataset with 11 classes.
 
 ## Data Download
 You can find the raw images and labeled images at here: [CamVid](https://datasets.cms.waikato.ac.nz/ufdl/camvid/)
@@ -19,10 +19,31 @@ You can find the raw images and labeled images at here: [CamVid](https://dataset
     └── dataset_info.json
 ```
 
+## 11-Class Grouping
+
+Following MATLAB's SegNet methodology, the original 32 CamVid classes are grouped into 11 classes:
+
+1. **Sky** - Sky
+2. **Building** - Bridge, Building, Wall, Tunnel, Archway
+3. **Pole** - Column_Pole, TrafficCone
+4. **Road** - Road, LaneMkgsDriv, LaneMkgsNonDriv
+5. **Pavement** - Sidewalk, ParkingBlock, RoadShoulder
+6. **Tree** - Tree, VegetationMisc
+7. **SignSymbol** - SignSymbol, Misc_Text, TrafficLight
+8. **Fence** - Fence
+9. **Car** - Car, SUVPickupTruck, Truck_Bus, Train, OtherMoving
+10. **Pedestrian** - Pedestrian, Child, CartLuggagePram, Animal
+11. **Bicyclist** - Bicyclist, MotorcycleScooter
+
+The **Void** class is excluded from the 11 classes and remains as `ignore_index=255`.
+
+This grouping provides better class balance and improved training, especially for underrepresented classes.
+
 ## Files Overview
 
 1. **prepare_camvid_data.py** - Data preparation script
    - Scans and pairs images with labels
+   - Applies 11-class grouping from original 32 classes
    - Creates train/val/test splits (70/15/15)
    - Computes dataset statistics (mean, std)
    - Computes class distribution and weights
@@ -37,19 +58,20 @@ You can find the raw images and labeled images at here: [CamVid](https://dataset
    - Configurable batch size, workers, image size
    - Returns class weights for loss function
 
-4. **example_usage.py** - Complete usage example
-   - Shows how to use dataloaders in training
+4. **train_fcn.py** - FCN training script
+   - Complete training loop with FCN model
+   - Configured for 11 classes
 
 ## Usage
 
 ### Step 1: Prepare the Dataset
-Symbolic link the CamVid folder to this folder. The CamVid folder most contains:
-* 701_StillsRaw_full: The raw images
-* LabeledApproved_full: The labeled images
-* label_colors.txt: The classname mapping
+Symbolic link the CamVid folder to this folder. The CamVid folder must contain:
+* 701\_StillsRaw\_full: The raw images
+* LabeledApproved\_full: The labeled images
+* label\_colors.txt: The classname mapping
 
 ```bash
-ln -s CamVid .
+ln -s /path/to/CamVid .
 python prepare_camvid_data.py
 ```
 
@@ -57,7 +79,7 @@ This will create:
 - `splits/train.txt` - List of training image filenames
 - `splits/val.txt` - List of validation image filenames
 - `splits/test.txt` - List of test image filenames
-- `splits/dataset_info.json` - Metadata (classes, stats, weights)
+- `splits/dataset_info.json` - Metadata (11 classes, stats, weights)
 
 ### Step 2: Use in Your Training Script
 
@@ -67,20 +89,20 @@ import torch.nn as nn
 
 # Create dataloaders
 dataloaders = create_dataloaders(
-    raw_image_dir='/data/CamVid/701_StillsRaw_full',
-    label_dir='/data/CamVid/LabeledApproved_full',
-    splits_dir='/data/CamVid/splits',
-    dataset_info_path='/data/CamVid/splits/dataset_info.json',
+    raw_image_dir='./CamVid/701_StillsRaw_full',
+    label_dir='./CamVid/LabeledApproved_full',
+    splits_dir='./CamVid/splits',
+    dataset_info_path='./CamVid/splits/dataset_info.json',
     batch_size=8,
     num_workers=4,
-    target_size=(960, 720)  # Full resolution (change to (480, 360) for 4x faster training)
+    target_size=(480, 352)  # Resize to 480x360, then center crop to 480x352
 )
 
 train_loader = dataloaders['train']
 val_loader = dataloaders['val']
 test_loader = dataloaders['test']
 class_weights = dataloaders['class_weights']
-num_classes = dataloaders['num_classes']  # 32
+num_classes = dataloaders['num_classes']  # 11
 ignore_index = dataloaders['ignore_index']  # 255
 
 # Setup loss with class weights
@@ -91,65 +113,45 @@ criterion = nn.CrossEntropyLoss(
 
 # Training loop
 for batch in train_loader:
-    images = batch['image']  # [B, 3, 360, 480]
-    masks = batch['mask']    # [B, 360, 480]
+    images = batch['image']  # [B, 3, 352, 480]
+    masks = batch['mask']    # [B, 352, 480]
     filenames = batch['filename']
 
     # Your model forward pass
-    outputs = model(images)  # [B, num_classes, 360, 480]
+    outputs = model(images)  # [B, num_classes, 352, 480]
     loss = criterion(outputs, masks)
 ```
 
 ## Key Features
 
 ### Data Augmentation (Training)
-- Resize to configured size (default: 960x720, can use 480x360 for faster training)
+- Resize to 480x360
+- Center crop to 480x352 (divisible by 32 for FCN)
 - Random horizontal flip
 - Color jittering (brightness, contrast, saturation, hue)
 - Normalization
 
 ### Validation/Test
-- Resize to configured size
+- Resize to 480x360
+- Center crop to 480x352
 - Normalization only (no augmentation)
 
 ### Class Handling
-- 32 classes total (31 semantic + 1 void)
+- 11 classes (grouped from original 32)
 - Void class (RGB: 0,0,0) mapped to index 255
 - Class weights computed for imbalanced classes
 
 ### RGB to Index Conversion
 - Automatically converts RGB color masks to class indices
 - Handles on-the-fly during loading
+- Uses 11-class grouping mapping
 
 ## Dataset Info
 
-- **Total classes**: 32 (including Void)
-- **Image size**: 960x720 (original, default for training)
-  - Can configure to 480x360 for 4x faster training
+- **Total classes**: 11 (grouped from 32 original classes)
+- **Image size**: 480x352 (resized from original, divisible by 32)
 - **Format**: RGB images + RGB color-coded masks
 - **Split**: 70% train, 15% val, 15% test
-
-## Image Resolution Options
-
-**960x720 (Full Resolution - Default):**
-- ✅ Maximum accuracy
-- ✅ Better for small objects (pedestrians, signs)
-- ❌ Slower training (requires more GPU memory)
-
-**480x360 (Half Resolution):**
-- ✅ 4x faster training
-- ✅ Lower GPU memory usage
-- ❌ ~1-3% accuracy drop
-
-Change `TARGET_SIZE` in `prepare_camvid_data.py` and `target_size` parameter in dataloaders.
-
-## Classes
-
-See `label_colors.txt` for the complete list. Main classes include:
-- Sky, Building, Road, Sidewalk, Tree
-- Car, TruckBus, Pedestrian, Bicyclist
-- Sign, Fence, Pole, Traffic Light
-- And more...
 
 ## Requirements
 
@@ -162,6 +164,7 @@ pip install pillow numpy tqdm
 ## Notes
 
 - Void pixels (class 255) are automatically ignored in loss calculation
-- Class weights help handle class imbalance (sky, road > pedestrian, bicyclist)
+- Class weights help handle class imbalance
 - Using Albumentations for transforms ensures both image and mask are transformed identically
 - Dataset statistics computed from training set only
+- 11-class grouping follows MATLAB's SegNet methodology for better training
