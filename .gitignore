@@ -19,5 +19,7 @@
 
 # Ignore build, devel, and logs folder
 CamVid
+models
+plots
 __pycache__
 .vscode

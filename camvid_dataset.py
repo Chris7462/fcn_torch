@@ -96,6 +96,9 @@ class CamVidDataset(Dataset):
             image = transformed['image']
             mask = transformed['mask']
 
+        # Ensure mask is Long type for PyTorch
+        mask = mask.long()
+
         return {
             'image': image,
             'mask': mask,
