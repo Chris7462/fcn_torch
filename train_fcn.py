@@ -1,5 +1,5 @@
 """
-FCN Training Script for CamVid Dataset
+FCN Training Script for CamVid and Cityscapes Datasets
 Following original FCN paper training settings
 """
 
@@ -14,20 +14,34 @@ import os
 from tqdm import tqdm
 
 from create_dataloaders import create_dataloaders
+from create_cityscapes_dataloaders import create_cityscapes_dataloaders
 from fcn import create_fcn_model
 from metrics import batch_iou, batch_pixel_acc
 
 
 # ================== Configuration ==================
-# Paths
-RAW_IMAGE_DIR = './CamVid/701_StillsRaw_full'
-LABEL_DIR = './CamVid/LabeledApproved_full'
-SPLITS_DIR = './CamVid/splits'
-DATASET_INFO_PATH = './CamVid/splits/dataset_info.json'
+# Dataset-specific paths and settings
+DATASET_CONFIGS = {
+    'camvid': {
+        'raw_image_dir': './CamVid/701_StillsRaw_full',
+        'label_dir': './CamVid/LabeledApproved_full',
+        'splits_dir': './CamVid/splits',
+        'dataset_info_path': './CamVid/splits/dataset_info.json',
+        'target_size': (480, 352),
+        'n_class': 11
+    },
+    'cityscapes': {
+        'leftimg_dir': './Cityscapes/leftImg8bit',
+        'gtfine_dir': './Cityscapes/gtFine',
+        'splits_dir': './Cityscapes/splits',
+        'dataset_info_path': './Cityscapes/splits/dataset_info.json',
+        'target_size': (2048, 1024),
+        'n_class': 19
+    }
+}
 
 # Model settings
 BACKBONE = 'vgg16'  # 'vgg16', 'resnet50' (TODO), 'efficientnet' (TODO)
-N_CLASS = 11
 
 # Training settings (following original FCN paper)
 BATCH_SIZE = 16
@@ -39,7 +53,6 @@ STEP_SIZE = 50
 GAMMA = 0.5
 
 # Data settings
-TARGET_SIZE = (480, 352)  # (width, height) - resize to 480x360 then centercrop to 480x352
 NUM_WORKERS = 4
 
 # Output directories
@@ -48,18 +61,14 @@ PLOT_DIR = './plots'
 os.makedirs(MODEL_DIR, exist_ok=True)
 os.makedirs(PLOT_DIR, exist_ok=True)
 
-# Experiment name
-EXPERIMENT_NAME = f"FCNs-{BACKBONE}_batch{BATCH_SIZE}_epoch{EPOCHS}_SGD_lr{LR}_mom{MOMENTUM}_wd{WEIGHT_DECAY}"
-print(f"Experiment: {EXPERIMENT_NAME}")
 
-
-def train_one_epoch(model, train_loader, criterion, optimizer, device, epoch):
+def train_one_epoch(model, train_loader, criterion, optimizer, device, epoch, total_epochs):
     """Train for one epoch"""
     model.train()
     running_loss = 0.0
     all_pixel_accs = []
 
-    pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{EPOCHS} [Train]")
+    pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{total_epochs} [Train]")
     for batch_idx, batch in enumerate(pbar):
         images = batch['image'].to(device)
         masks = batch['mask'].to(device)
@@ -91,7 +100,7 @@ def train_one_epoch(model, train_loader, criterion, optimizer, device, epoch):
     return avg_loss, avg_pixel_acc
 
 
-def validate(model, val_loader, criterion, device, n_class, ignore_index, epoch):
+def validate(model, val_loader, criterion, device, n_class, ignore_index, epoch, total_epochs):
     """Validate the model"""
     model.eval()
     running_loss = 0.0
@@ -99,7 +108,7 @@ def validate(model, val_loader, criterion, device, n_class, ignore_index, epoch)
     all_pixel_accs = []
 
     with torch.no_grad():
-        pbar = tqdm(val_loader, desc=f"Epoch {epoch+1}/{EPOCHS} [Val]  ")
+        pbar = tqdm(val_loader, desc=f"Epoch {epoch+1}/{total_epochs} [Val]  ")
         for batch_idx, batch in enumerate(pbar):
             images = batch['image'].to(device)
             masks = batch['mask'].to(device)
@@ -224,6 +233,20 @@ def load_checkpoint(checkpoint_path, model, optimizer, scheduler, device):
 
 
 def main(args=None):
+    # Get dataset config
+    dataset_name = args.dataset if args else 'camvid'
+    if dataset_name not in DATASET_CONFIGS:
+        raise ValueError(f"Unknown dataset: {dataset_name}. Choose from {list(DATASET_CONFIGS.keys())}")
+
+    config = DATASET_CONFIGS[dataset_name]
+    target_size = config['target_size']
+    n_class = config['n_class']
+
+    # Experiment name
+    EXPERIMENT_NAME = f"FCNs-{BACKBONE}_{dataset_name}_batch{BATCH_SIZE}_epoch{EPOCHS}_SGD_lr{LR}_mom{MOMENTUM}_wd{WEIGHT_DECAY}"
+    print(f"Experiment: {EXPERIMENT_NAME}")
+    print(f"Dataset: {dataset_name}")
+
     # Set device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
@@ -232,15 +255,26 @@ def main(args=None):
 
     # Create dataloaders
     print("\nCreating dataloaders...")
-    dataloaders = create_dataloaders(
-        raw_image_dir=RAW_IMAGE_DIR,
-        label_dir=LABEL_DIR,
-        splits_dir=SPLITS_DIR,
-        dataset_info_path=DATASET_INFO_PATH,
-        batch_size=BATCH_SIZE,
-        num_workers=NUM_WORKERS,
-        target_size=TARGET_SIZE
-    )
+    if dataset_name == 'camvid':
+        dataloaders = create_dataloaders(
+            raw_image_dir=config['raw_image_dir'],
+            label_dir=config['label_dir'],
+            splits_dir=config['splits_dir'],
+            dataset_info_path=config['dataset_info_path'],
+            batch_size=BATCH_SIZE,
+            num_workers=NUM_WORKERS,
+            target_size=target_size
+        )
+    elif dataset_name == 'cityscapes':
+        dataloaders = create_cityscapes_dataloaders(
+            leftimg_dir=config['leftimg_dir'],
+            gtfine_dir=config['gtfine_dir'],
+            splits_dir=config['splits_dir'],
+            dataset_info_path=config['dataset_info_path'],
+            batch_size=BATCH_SIZE,
+            num_workers=NUM_WORKERS,
+            target_size=target_size
+        )
 
     train_loader = dataloaders['train']
     val_loader = dataloaders['val']
@@ -300,12 +334,12 @@ def main(args=None):
 
         # Train
         train_loss, train_pixel_acc = train_one_epoch(
-            model, train_loader, criterion, optimizer, device, epoch
+            model, train_loader, criterion, optimizer, device, epoch, EPOCHS
         )
 
         # Validate
         val_loss, val_miou, val_pixel_acc, class_ious = validate(
-            model, val_loader, criterion, device, num_classes, ignore_index, epoch
+            model, val_loader, criterion, device, num_classes, ignore_index, epoch, EPOCHS
         )
 
         # Update learning rate
@@ -392,6 +426,8 @@ if __name__ == '__main__':
     import argparse
 
     ap = argparse.ArgumentParser(description='Train FCN model for semantic segmentation')
+    ap.add_argument('--dataset', type=str, default='camvid', choices=['camvid', 'cityscapes'],
+                    help='Dataset to use for training (default: camvid)')
     ap.add_argument('--resume', type=str, default=None,
                     help='Path to checkpoint to resume training from')
     ap.add_argument('--override-lr', type=float, default=None,
