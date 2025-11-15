@@ -4,7 +4,7 @@ CamVid Dataset Preparation Script
 - Verifies file pairs
 - Creates train/val/test splits
 - Computes dataset statistics
-- Computes class weights
+- Computes class weights using Median Frequency Balancing
 - Groups 32 classes into 11 classes following MATLAB's SegNet methodology
 """
 
@@ -188,7 +188,7 @@ def compute_class_distribution(file_list, label_image_dir, color_to_class, num_c
 def compute_class_weights(class_counts):
     """
     Compute class weights for handling class imbalance
-    Uses inverse frequency weighting
+    Uses Median Frequency Balancing: weight[c] = median_freq / freq[c]
 
     Args:
         class_counts: numpy array of pixel counts for each class
@@ -205,12 +205,13 @@ def compute_class_weights(class_counts):
     mask = class_counts > 0
 
     if mask.sum() > 0:
-        # Inverse frequency for existing classes
-        total_pixels = class_counts[mask].sum()
-        class_weights[mask] = total_pixels / (mask.sum() * class_counts[mask])
+        # Calculate frequencies
+        total_pixels = class_counts.sum()
+        freq = class_counts[mask] / total_pixels
 
-    # Normalize
-    class_weights = class_weights / class_weights.sum() * len(class_counts)
+        # Median Frequency Balancing
+        median_freq = np.median(freq)
+        class_weights[mask] = median_freq / freq
 
     return class_weights.tolist()
 
@@ -330,8 +331,8 @@ def main():
         train_files, LABEL_IMAGE_DIR, color_to_class, len(class_names)
     )
 
-    # Compute class weights
-    print("\n7. Computing class weights...")
+    # Compute class weights using Median Frequency Balancing
+    print("\n7. Computing class weights (Median Frequency Balancing)...")
     class_weights = compute_class_weights(class_counts)
 
     # Show class distribution
