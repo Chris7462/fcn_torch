@@ -48,7 +48,7 @@ def get_validation_transform(target_size, mean, std):
     ])
 
 
-def create_dataloaders(
+def create_camvid_dataloaders(
     raw_image_dir,
     label_dir,
     splits_dir,
@@ -168,7 +168,7 @@ if __name__ == '__main__':
     DATASET_INFO_PATH = '/data/CamVid/splits/dataset_info.json'
 
     # Create dataloaders
-    dataloaders = create_dataloaders(
+    dataloaders = create_camvid_dataloaders(
         raw_image_dir=RAW_IMAGE_DIR,
         label_dir=LABEL_DIR,
         splits_dir=SPLITS_DIR,

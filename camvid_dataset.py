@@ -108,7 +108,7 @@ class CamVidDataset(Dataset):
 
 # Example usage
 if __name__ == '__main__':
-    from create_dataloaders import get_training_transform
+    from create_camvid_dataloaders import get_training_transform
 
     # Test the dataset
     dataset_info_path = './CamVid/splits/dataset_info.json'
