@@ -53,7 +53,7 @@ This grouping provides better class balance and improved training, especially fo
    - Applies data augmentation (training) or just normalization (val/test)
    - Handles void/ignore class (index 255)
 
-3. **create_dataloaders.py** - DataLoader creation
+3. **create_camvid_dataloaders.py** - DataLoader creation
    - Creates train/val/test dataloaders
    - Configurable batch size, workers, image size
    - Returns class weights for loss function
@@ -84,11 +84,11 @@ This will create:
 ### Step 2: Use in Your Training Script
 
 ```python
-from create_dataloaders import create_dataloaders
+from create_camvid_dataloaders import create_camvid_dataloaders
 import torch.nn as nn
 
 # Create dataloaders
-dataloaders = create_dataloaders(
+dataloaders = create_camvid_dataloaders(
     raw_image_dir='./CamVid/701_StillsRaw_full',
     label_dir='./CamVid/LabeledApproved_full',
     splits_dir='./CamVid/splits',

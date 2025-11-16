@@ -12,7 +12,7 @@ import argparse
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
-from create_dataloaders import create_dataloaders
+from create_camvid_dataloaders import create_camvid_dataloaders
 from fcn import create_fcn_model
 from metrics import batch_iou, batch_pixel_acc
 
@@ -138,12 +138,12 @@ def test_model(model, test_loader, criterion, device, n_class, ignore_index,
                 # Create side-by-side visualization
                 # Denormalize image: img = (img * std) + mean
                 img = img.transpose(1, 2, 0)  # (H, W, 3)
-                
+
                 # Reverse normalization
                 mean_np = np.array(mean).reshape(1, 1, 3)
                 std_np = np.array(std).reshape(1, 1, 3)
                 img = (img * std_np) + mean_np
-                
+
                 # Convert to uint8 [0, 255]
                 img = (img * 255).astype(np.uint8)
                 img = np.clip(img, 0, 255)
@@ -232,17 +232,17 @@ def main():
     # Load checkpoint
     print(f"\nLoading checkpoint: {args.checkpoint}")
     checkpoint = torch.load(args.checkpoint, map_location=device, weights_only=False)
-    
+
     # Load mean and std from dataset info
     import json
     with open(DATASET_INFO_PATH, 'r') as f:
         dataset_info = json.load(f)
     mean = dataset_info.get('mean', [0.485, 0.456, 0.406])
     std = dataset_info.get('std', [0.229, 0.224, 0.225])
-    
+
     # Create dataloaders
     print("\nCreating test dataloader...")
-    dataloaders = create_dataloaders(
+    dataloaders = create_camvid_dataloaders(
         raw_image_dir=RAW_IMAGE_DIR,
         label_dir=LABEL_DIR,
         splits_dir=SPLITS_DIR,

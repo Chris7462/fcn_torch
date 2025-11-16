@@ -13,7 +13,7 @@ import time
 import os
 from tqdm import tqdm
 
-from create_dataloaders import create_dataloaders
+from create_camvid_dataloaders import create_camvid_dataloaders
 from create_cityscapes_dataloaders import create_cityscapes_dataloaders
 from fcn import create_fcn_model
 from metrics import batch_iou, batch_pixel_acc
@@ -256,7 +256,7 @@ def main(args=None):
     # Create dataloaders
     print("\nCreating dataloaders...")
     if dataset_name == 'camvid':
-        dataloaders = create_dataloaders(
+        dataloaders = create_camvid_dataloaders(
             raw_image_dir=config['raw_image_dir'],
             label_dir=config['label_dir'],
             splits_dir=config['splits_dir'],
