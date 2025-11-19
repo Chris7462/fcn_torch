@@ -15,10 +15,9 @@ import random
 from tqdm import tqdm
 
 # Configuration
-RAW_IMAGE_DIR = "./CamVid/701_StillsRaw_full"
-LABEL_IMAGE_DIR = "./CamVid/LabeledApproved_full"
-# LABEL_COLORS_FILE = "./CamVid/label_colors.txt"
-OUTPUT_DIR = "./CamVid/splits"
+RAW_IMAGE_DIR = "./data/CamVid/701_StillsRaw_full"
+LABEL_IMAGE_DIR = "./data/CamVid/LabeledApproved_full"
+OUTPUT_DIR = "./data/CamVid/splits"
 
 # Split ratios
 TRAIN_RATIO = 0.7

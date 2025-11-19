@@ -1,6 +1,5 @@
 """
-FCN Training Script for CamVid and Cityscapes Datasets
-Following original FCN paper training settings
+FCN Training Script using Registry System
 """
 
 import torch
@@ -11,55 +10,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 import time
 import os
+import json
+import argparse
 from tqdm import tqdm
 
-from create_camvid_dataloaders import create_camvid_dataloaders
-from create_cityscapes_dataloaders import create_cityscapes_dataloaders
+from utils.config import Config
+from datasets import build_dataloader
 from fcn import create_fcn_model
 from metrics import batch_iou, batch_pixel_acc
-
-
-# ================== Configuration ==================
-# Dataset-specific paths and settings
-DATASET_CONFIGS = {
-    'camvid': {
-        'raw_image_dir': './CamVid/701_StillsRaw_full',
-        'label_dir': './CamVid/LabeledApproved_full',
-        'splits_dir': './CamVid/splits',
-        'dataset_info_path': './CamVid/splits/dataset_info.json',
-        'target_size': (480, 352),
-        'n_class': 11
-    },
-    'cityscapes': {
-        'leftimg_dir': './Cityscapes/leftImg8bit',
-        'gtfine_dir': './Cityscapes/gtFine',
-        'splits_dir': './Cityscapes/splits',
-        'dataset_info_path': './Cityscapes/splits/dataset_info.json',
-        'target_size': (2048, 1024),
-        'n_class': 19
-    }
-}
-
-# Model settings
-BACKBONE = 'vgg16'  # 'vgg16', 'resnet50' (TODO), 'efficientnet' (TODO)
-
-# Training settings (following original FCN paper)
-BATCH_SIZE = 16
-EPOCHS = 200
-LR = 1e-3
-MOMENTUM = 0.9
-WEIGHT_DECAY = 5e-4
-STEP_SIZE = 50
-GAMMA = 0.5
-
-# Data settings
-NUM_WORKERS = 4
-
-# Output directories
-MODEL_DIR = './models'
-PLOT_DIR = './plots'
-os.makedirs(MODEL_DIR, exist_ok=True)
-os.makedirs(PLOT_DIR, exist_ok=True)
 
 
 def train_one_epoch(model, train_loader, criterion, optimizer, device, epoch, total_epochs):
@@ -189,7 +147,7 @@ def plot_training_history(history, save_dir, experiment_name):
     # Save figure
     save_path = os.path.join(save_dir, f'{experiment_name}_history.png')
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    print(f"\n✓ Training history plot saved to: {save_path}")
+    print(f"Training history plot saved to: {save_path}")
     plt.close()
 
 
@@ -233,19 +191,9 @@ def load_checkpoint(checkpoint_path, model, optimizer, scheduler, device):
 
 
 def main(args=None):
-    # Get dataset config
-    dataset_name = args.dataset if args else 'camvid'
-    if dataset_name not in DATASET_CONFIGS:
-        raise ValueError(f"Unknown dataset: {dataset_name}. Choose from {list(DATASET_CONFIGS.keys())}")
-
-    config = DATASET_CONFIGS[dataset_name]
-    target_size = config['target_size']
-    n_class = config['n_class']
-
-    # Experiment name
-    EXPERIMENT_NAME = f"FCNs-{BACKBONE}_{dataset_name}_batch{BATCH_SIZE}_epoch{EPOCHS}_SGD_lr{LR}_mom{MOMENTUM}_wd{WEIGHT_DECAY}"
-    print(f"Experiment: {EXPERIMENT_NAME}")
-    print(f"Dataset: {dataset_name}")
+    # Load config
+    cfg = Config.fromfile(args.config)
+    print(f"Loaded config from: {args.config}")
 
     # Set device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -253,53 +201,46 @@ def main(args=None):
     if torch.cuda.is_available():
         print(f"GPU: {torch.cuda.get_device_name(0)}")
 
-    # Create dataloaders
-    print("\nCreating dataloaders...")
-    if dataset_name == 'camvid':
-        dataloaders = create_camvid_dataloaders(
-            raw_image_dir=config['raw_image_dir'],
-            label_dir=config['label_dir'],
-            splits_dir=config['splits_dir'],
-            dataset_info_path=config['dataset_info_path'],
-            batch_size=BATCH_SIZE,
-            num_workers=NUM_WORKERS,
-            target_size=target_size
-        )
-    elif dataset_name == 'cityscapes':
-        dataloaders = create_cityscapes_dataloaders(
-            leftimg_dir=config['leftimg_dir'],
-            gtfine_dir=config['gtfine_dir'],
-            splits_dir=config['splits_dir'],
-            dataset_info_path=config['dataset_info_path'],
-            batch_size=BATCH_SIZE,
-            num_workers=NUM_WORKERS,
-            target_size=target_size
-        )
+    # Build dataloaders using registry
+    print("\nBuilding dataloaders...")
+    train_loader = build_dataloader(cfg.dataset.train, cfg, is_train=True)
+    val_loader = build_dataloader(cfg.dataset.val, cfg, is_train=False)
 
-    train_loader = dataloaders['train']
-    val_loader = dataloaders['val']
-    class_weights = torch.tensor(dataloaders['class_weights'], dtype=torch.float32).to(device)
-    num_classes = dataloaders['num_classes']
-    ignore_index = dataloaders['ignore_index']
+    print(f"Train: {len(train_loader.dataset)} images")
+    print(f"Val:   {len(val_loader.dataset)} images")
 
-    print(f"Number of classes: {num_classes}")
-    print(f"Ignore index: {ignore_index}")
+    # Load class weights from dataset_info.json
+    with open(cfg.dataset.train.dataset_info_path, 'r') as f:
+        dataset_info = json.load(f)
+    class_weights = torch.tensor(dataset_info['class_weights'], dtype=torch.float32).to(device)
+
+    print(f"Number of classes: {cfg.num_classes}")
+    print(f"Ignore index: {cfg.ignore_label}")
 
     # Create model
-    print(f"\nCreating FCN model with {BACKBONE} backbone...")
-    model = create_fcn_model(n_class=num_classes, backbone=BACKBONE, pretrained=True)
+    print(f"\nCreating model...")
+    model = create_fcn_model(n_class=cfg.num_classes, backbone='vgg16', pretrained=cfg.backbone.pretrained)
     model = model.to(device)
 
     # Setup loss and optimizer (following original FCN paper)
-    criterion = nn.CrossEntropyLoss(weight=class_weights, ignore_index=ignore_index)
-    optimizer = optim.SGD(model.parameters(), lr=LR, momentum=MOMENTUM, weight_decay=WEIGHT_DECAY)
-    scheduler = lr_scheduler.StepLR(optimizer, step_size=STEP_SIZE, gamma=GAMMA)
+    criterion = nn.CrossEntropyLoss(weight=class_weights, ignore_index=cfg.ignore_label)
+    optimizer = optim.SGD(
+        model.parameters(),
+        lr=cfg.optimizer.lr,
+        momentum=cfg.optimizer.momentum,
+        weight_decay=cfg.optimizer.weight_decay
+    )
+    scheduler_fn = lr_scheduler.StepLR(
+        optimizer,
+        step_size=cfg.scheduler.step_size,
+        gamma=cfg.scheduler.gamma
+    )
 
     print(f"\nOptimizer: SGD")
-    print(f"  Learning rate: {LR}")
-    print(f"  Momentum: {MOMENTUM}")
-    print(f"  Weight decay: {WEIGHT_DECAY}")
-    print(f"  LR Scheduler: StepLR (step_size={STEP_SIZE}, gamma={GAMMA})")
+    print(f"  Learning rate: {cfg.optimizer.lr}")
+    print(f"  Momentum: {cfg.optimizer.momentum}")
+    print(f"  Weight decay: {cfg.optimizer.weight_decay}")
+    print(f"  LR Scheduler: StepLR (step_size={cfg.scheduler.step_size}, gamma={cfg.scheduler.gamma})")
 
     # Training state
     start_epoch = 0
@@ -313,9 +254,9 @@ def main(args=None):
     }
 
     # Load checkpoint if resuming
-    if args and args.resume:
+    if args.resume:
         start_epoch, best_miou, history = load_checkpoint(
-            args.resume, model, optimizer, scheduler, device
+            args.resume, model, optimizer, scheduler_fn, device
         )
 
         # Override learning rate if specified
@@ -324,26 +265,29 @@ def main(args=None):
                 param_group['lr'] = args.override_lr
             print(f'[INFO] Overriding learning rate to {args.override_lr}')
 
+    # Experiment name for plots
+    experiment_name = f"FCN_{os.path.basename(args.config).replace('.py', '')}"
+
     print("\n" + "="*80)
     print("Starting Training")
     print("="*80)
 
     # Training loop
-    for epoch in range(start_epoch, EPOCHS):
+    for epoch in range(start_epoch, cfg.epochs):
         epoch_start = time.time()
 
         # Train
         train_loss, train_pixel_acc = train_one_epoch(
-            model, train_loader, criterion, optimizer, device, epoch, EPOCHS
+            model, train_loader, criterion, optimizer, device, epoch, cfg.epochs
         )
 
         # Validate
         val_loss, val_miou, val_pixel_acc, class_ious = validate(
-            model, val_loader, criterion, device, num_classes, ignore_index, epoch, EPOCHS
+            model, val_loader, criterion, device, cfg.num_classes, cfg.ignore_label, epoch, cfg.epochs
         )
 
         # Update learning rate
-        scheduler.step()
+        scheduler_fn.step()
         current_lr = optimizer.param_groups[0]['lr']
 
         # Update history
@@ -356,7 +300,7 @@ def main(args=None):
         epoch_time = time.time() - epoch_start
 
         # Print epoch summary
-        print(f"\nEpoch {epoch+1}/{EPOCHS} Summary:")
+        print(f"\nEpoch {epoch+1}/{cfg.epochs} Summary:")
         print(f"  Time: {epoch_time:.2f}s")
         print(f"  LR: {current_lr:.6f}")
         print(f"  Train Loss: {train_loss:.4f}")
@@ -370,37 +314,37 @@ def main(args=None):
         if is_best:
             best_miou = val_miou
 
-        # Check if periodic checkpoint (every 10 epochs)
-        is_periodic = (epoch + 1) % 10 == 0
+        # Check if periodic checkpoint
+        is_periodic = (epoch + 1) % cfg.save_ep == 0
 
         # Prepare checkpoint
         checkpoint = {
             'epoch': epoch + 1,  # Next epoch to resume from
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
-            'scheduler_state_dict': scheduler.state_dict() if scheduler else None,
+            'scheduler_state_dict': scheduler_fn.state_dict() if scheduler_fn else None,
             'best_miou': best_miou,
             'history': history
         }
 
         # Always save last checkpoint
-        last_model_path = os.path.join(MODEL_DIR, f'{EXPERIMENT_NAME}_last.pth')
+        last_model_path = os.path.join(cfg.model_dir, f'{experiment_name}_last.pth')
         torch.save(checkpoint, last_model_path)
 
         # Save best checkpoint
         if is_best:
-            best_model_path = os.path.join(MODEL_DIR, f'{EXPERIMENT_NAME}_best.pth')
+            best_model_path = os.path.join(cfg.model_dir, f'{experiment_name}_best.pth')
             torch.save(checkpoint, best_model_path)
             print(f"  ✓ Best model saved! (mIoU: {best_miou:.4f})")
 
         # Save periodic checkpoint (every 10 epochs)
         if is_periodic:
-            periodic_path = os.path.join(MODEL_DIR, f'{EXPERIMENT_NAME}_epoch_{epoch+1}.pth')
+            periodic_path = os.path.join(cfg.model_dir, f'{experiment_name}_epoch_{epoch+1}.pth')
             torch.save(checkpoint, periodic_path)
             print(f"  ✓ Periodic checkpoint saved (epoch {epoch+1})")
 
         # Plot training history after each epoch
-        plot_training_history(history, PLOT_DIR, EXPERIMENT_NAME)
+        plot_training_history(history, cfg.plot_dir, experiment_name)
 
         print("-" * 80)
 
@@ -410,12 +354,12 @@ def main(args=None):
     print("="*80)
 
     # Save final model
-    final_model_path = os.path.join(MODEL_DIR, f'{EXPERIMENT_NAME}_final.pth')
+    final_model_path = os.path.join(cfg.model_dir, f'{experiment_name}_final.pth')
     torch.save({
-        'epoch': EPOCHS,
+        'epoch': cfg.epochs,
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
-        'scheduler_state_dict': scheduler.state_dict(),
+        'scheduler_state_dict': scheduler_fn.state_dict(),
         'best_miou': best_miou,
         'history': history
     }, final_model_path)
@@ -423,15 +367,13 @@ def main(args=None):
 
 
 if __name__ == '__main__':
-    import argparse
-
-    ap = argparse.ArgumentParser(description='Train FCN model for semantic segmentation')
-    ap.add_argument('--dataset', type=str, default='camvid', choices=['camvid', 'cityscapes'],
-                    help='Dataset to use for training (default: camvid)')
-    ap.add_argument('--resume', type=str, default=None,
+    # Parse arguments
+    parser = argparse.ArgumentParser(description='Train FCN model for semantic segmentation')
+    parser.add_argument('--config', required=True, help='Path to config file')
+    parser.add_argument('--resume', type=str, default=None,
                     help='Path to checkpoint to resume training from')
-    ap.add_argument('--override-lr', type=float, default=None,
+    parser.add_argument('--override-lr', type=float, default=None,
                     help='Override learning rate when resuming training')
-    args = ap.parse_args()
+    args = parser.parse_args()
 
     main(args)
