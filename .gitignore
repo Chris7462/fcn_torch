@@ -15,12 +15,10 @@
 *.pyc
 *.aux
 *.log
-*.pdf
 
 # Ignore build, devel, and logs folder
 CamVid
-models
-plots
-outputs
+bak
+work_dirs
 __pycache__
 .vscode

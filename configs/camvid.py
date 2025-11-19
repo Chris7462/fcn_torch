@@ -3,7 +3,7 @@ CamVid Dataset Training Configuration
 11 classes for semantic segmentation
 """
 
-# Model configuration (to be implemented in Phase 2)
+# Model configuration
 net = dict(
     type='FCNs',
 )
@@ -11,6 +11,10 @@ net = dict(
 backbone = dict(
     type='VGG16',
     pretrained=True,
+)
+
+decoder = dict(
+    type='FCNHead',
 )
 
 # Optimizer configuration
@@ -72,9 +76,17 @@ num_classes = 11
 ignore_label = 255
 epochs = 200
 
-# Logging
+# Logging and checkpointing
+log_interval = 50
 save_ep = 10  # Save checkpoint every N epochs
+eval_ep = 1   # Evaluate every N epochs
 
-# Output directories
-model_dir = './models'
-plot_dir = './plots'
+# Work directory (will be extended with dataset name and timestamp by Recorder)
+work_dirs = './work_dirs'
+
+# Load checkpoint (set by command line args)
+load_from = None
+
+# Flags (set by command line args)
+test = False
+validate = False

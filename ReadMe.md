@@ -1,14 +1,57 @@
-# CamVid Dataset PyTorch DataLoader
+# FCN_Torch: Semantic Segmentation with PyTorch
 
-Complete PyTorch dataloader implementation for the CamVid semantic segmentation dataset with 11 classes.
+PyTorch implementation of Fully Convolutional Networks (FCN) for semantic segmentation on CamVid dataset.
+
+## Features
+
+- **Registry System** - Config-driven model/dataset/optimizer building
+- **Modular Design** - Separate backbone, decoder, and runner components
+- **VGG16 Backbone** - Using torchvision's pretrained weights (extensible to ResNet)
+- **CamVid Dataset** - 11-class semantic segmentation
+- **Training/Validation/Testing** - Unified entry point with logging
+
+## Project Structure
+```
+fcn_torch/
+├── main.py                   # Entry point (train/val/test)
+├── configs/
+│   └── camvid.py             # Training configuration
+├── models/
+│   ├── fcn.py                # FCN model (registered)
+│   ├── backbones/            # Backbone networks
+│   │   └── vgg.py            # VGG16 backbone
+│   └── decoders/             # Decoder heads
+│       └── fcn_head.py       # FCN decoder (TorchVision style)
+├── datasets/
+│   ├── camvid.py             # CamVid dataset (registered)
+│   ├── camvid_dataset.py     # PyTorch Dataset class
+│   └── registry.py           # Dataset registry
+├── runner/
+│   ├── runner.py             # Training/validation/testing logic
+│   ├── optimizer.py          # Optimizer builder
+│   ├── scheduler.py          # LR scheduler builder
+│   ├── recorder.py           # Logging and metrics
+│   └── net_utils.py          # Model save/load
+├── utils/
+│   ├── config.py             # Config loader
+│   ├── registry.py           # Registry system
+│   └── metrics.py            # IoU and pixel accuracy
+└── tools/
+    └── prepare_camvid.py     # Dataset preparation script
+```
 
 ## Data Download
-You can find the raw images and labeled images at here: [CamVid](https://datasets.cms.waikato.ac.nz/ufdl/camvid/)
+
+Download the CamVid dataset from: [CamVid](https://datasets.cms.waikato.ac.nz/ufdl/camvid/)
+
+Required files:
+- `701_StillsRaw_full/` - Raw RGB images
+- `LabeledApproved_full/` - RGB color-coded label masks
+- `label_colors.txt` - RGB to class name mapping
 
 ## Dataset Structure
-
 ```
-/data/CamVid/
+CamVid/
 ├── 701_StillsRaw_full/          # Raw RGB images
 ├── LabeledApproved_full/         # RGB color-coded label masks (_L.png)
 ├── label_colors.txt              # RGB to class name mapping
@@ -19,7 +62,7 @@ You can find the raw images and labeled images at here: [CamVid](https://dataset
     └── dataset_info.json
 ```
 
-## 11-Class Grouping
+## CamVid 11-Class Grouping
 
 Following MATLAB's SegNet methodology, the original 32 CamVid classes are grouped into 11 classes:
 
@@ -35,151 +78,199 @@ Following MATLAB's SegNet methodology, the original 32 CamVid classes are groupe
 10. **Pedestrian** - Pedestrian, Child, CartLuggagePram, Animal
 11. **Bicyclist** - Bicyclist, MotorcycleScooter
 
-The **Void** class is excluded from the 11 classes and remains as `ignore_index=255`.
+**Note:** The **Void** class is excluded from the 11 classes and remains as `ignore_index=255`.
 
 This grouping provides better class balance and improved training, especially for underrepresented classes.
 
-## Files Overview
+## Quick Start
 
-1. **prepare_camvid_data.py** - Data preparation script
-   - Scans and pairs images with labels
-   - Applies 11-class grouping from original 32 classes
-   - Creates train/val/test splits (70/15/15)
-   - Computes dataset statistics (mean, std)
-   - Computes class distribution and weights
-
-2. **camvid_dataset.py** - PyTorch Dataset class
-   - Loads images and converts RGB masks to class indices
-   - Applies data augmentation (training) or just normalization (val/test)
-   - Handles void/ignore class (index 255)
-
-3. **create_camvid_dataloaders.py** - DataLoader creation
-   - Creates train/val/test dataloaders
-   - Configurable batch size, workers, image size
-   - Returns class weights for loss function
-
-4. **train_fcn.py** - FCN training script
-   - Complete training loop with FCN model
-   - Configured for 11 classes
-
-## Usage
-
-### Step 1: Prepare the Dataset
-Symbolic link the CamVid folder to this folder. The CamVid folder must contain:
-* 701\_StillsRaw\_full: The raw images
-* LabeledApproved\_full: The labeled images
-* label\_colors.txt: The classname mapping
-
+### 1. Installation
 ```bash
+# Install dependencies
+pip install torch torchvision
+pip install albumentations
+pip install pillow numpy tqdm matplotlib
+```
+
+### 2. Dataset Preparation
+```bash
+# Create symbolic link to CamVid dataset
 ln -s /path/to/CamVid .
-python prepare_camvid_data.py
+
+# Prepare dataset (creates splits and computes statistics)
+python tools/prepare_camvid.py
 ```
 
 This will create:
-- `splits/train.txt` - List of training image filenames
-- `splits/val.txt` - List of validation image filenames
-- `splits/test.txt` - List of test image filenames
-- `splits/dataset_info.json` - Metadata (11 classes, stats, weights)
+- `CamVid/splits/train.txt` - Training image list (70%)
+- `CamVid/splits/val.txt` - Validation image list (15%)
+- `CamVid/splits/test.txt` - Test image list (15%)
+- `CamVid/splits/dataset_info.json` - Metadata (classes, statistics, weights)
 
-### Step 2: Use in Your Training Script
-
-```python
-from create_camvid_dataloaders import create_camvid_dataloaders
-import torch.nn as nn
-
-# Create dataloaders
-dataloaders = create_camvid_dataloaders(
-    raw_image_dir='./CamVid/701_StillsRaw_full',
-    label_dir='./CamVid/LabeledApproved_full',
-    splits_dir='./CamVid/splits',
-    dataset_info_path='./CamVid/splits/dataset_info.json',
-    batch_size=8,
-    num_workers=4,
-    target_size=(480, 352)  # Resize to 480x360, then center crop to 480x352
-)
-
-train_loader = dataloaders['train']
-val_loader = dataloaders['val']
-test_loader = dataloaders['test']
-class_weights = dataloaders['class_weights']
-num_classes = dataloaders['num_classes']  # 11
-ignore_index = dataloaders['ignore_index']  # 255
-
-# Setup loss with class weights
-criterion = nn.CrossEntropyLoss(
-    weight=class_weights,
-    ignore_index=ignore_index
-)
-
-# Training loop
-for batch in train_loader:
-    images = batch['image']  # [B, 3, 352, 480]
-    masks = batch['mask']    # [B, 352, 480]
-    filenames = batch['filename']
-
-    # Your model forward pass
-    outputs = model(images)  # [B, num_classes, 352, 480]
-    loss = criterion(outputs, masks)
-```
-
-### Step 3: Usege Examples
+### 3. Training
 ```bash
-# Normal training (from scratch)
-python train_fcn.py
+# Train from scratch
+python main.py configs/camvid.py
 
-# Resume from last checkpoint
-python train_fcn.py --resume ./models/FCNs-vgg16_batch16_epoch100_SGD_lr0.001_mom0.9_wd0.0005_last.pth
-
-# Resume with lower learning rate (fine-tuning)
-python train_fcn.py --resume ./models/FCNs-vgg16_batch16_epoch100_SGD_lr0.001_mom0.9_wd0.0005_best.pth --override-lr 1e-4
-
-# Resume from epoch 50 checkpoint
-python train_fcn.py --resume ./models/FCNs-vgg16_batch16_epoch100_SGD_lr0.001_mom0.9_wd0.0005_epoch_50.pth
+# Resume training
+python main.py configs/camvid.py --load_from work_dirs/CamVid/TIMESTAMP/ckpt/best.pth
 ```
 
-## Key Features
+### 4. Validation
+```bash
+# Validate a trained model
+python main.py configs/camvid.py --validate --load_from work_dirs/CamVid/TIMESTAMP/ckpt/best.pth
+```
+
+### 5. Testing
+```bash
+# Run inference and save predictions
+python main.py configs/camvid.py --test --load_from work_dirs/CamVid/TIMESTAMP/ckpt/best.pth
+```
+
+## Output Structure
+```
+work_dirs/
+└── CamVid/
+    └── YYYYMMDD_HHMMSS/
+        ├── log.txt                    # Training log
+        ├── ckpt/
+        │   ├── best.pth              # Best model checkpoint
+        │   ├── last.pth              # Latest checkpoint
+        │   └── epoch_N.pth           # Periodic checkpoints
+        ├── plots/
+        │   └── training_history.png  # Loss/accuracy curves
+        ├── predictions/              # Test predictions (RGB masks)
+        └── visualizations/           # Side-by-side comparisons
+```
+
+## Configuration
+
+Edit `configs/camvid.py` to customize:
+```python
+# Model configuration
+net = dict(type='FCNs')
+backbone = dict(type='VGG16', pretrained=True)
+decoder = dict(type='FCNHead')
+
+# Training hyperparameters
+batch_size = 16
+epochs = 200
+img_height = 352
+img_width = 480
+
+# Optimizer
+optimizer = dict(
+    type='sgd',
+    lr=0.001,
+    weight_decay=5e-4,
+    momentum=0.9
+)
+
+# Learning rate scheduler
+scheduler = dict(
+    type='StepLR',
+    step_size=50,
+    gamma=0.5
+)
+```
+
+## Dataset Features
 
 ### Data Augmentation (Training)
-- Resize to 480x360
-- Center crop to 480x352 (divisible by 32 for FCN)
-- Random horizontal flip
+- Resize to 480×360
+- Center crop to 480×352 (divisible by 32 for FCN)
+- Random horizontal flip (p=0.5)
 - Color jittering (brightness, contrast, saturation, hue)
-- Normalization
+- Normalization (mean/std computed from training set)
 
 ### Validation/Test
-- Resize to 480x360
-- Center crop to 480x352
+- Resize to 480×360
+- Center crop to 480×352
 - Normalization only (no augmentation)
 
 ### Class Handling
 - 11 classes (grouped from original 32)
 - Void class (RGB: 0,0,0) mapped to index 255
-- Class weights computed for imbalanced classes
+- Class weights computed using Median Frequency Balancing
+- Automatic RGB to class index conversion during loading
 
-### RGB to Index Conversion
-- Automatically converts RGB color masks to class indices
-- Handles on-the-fly during loading
-- Uses 11-class grouping mapping
+## Model Architecture
 
-## Dataset Info
+- **Backbone**: VGG16 (pretrained on ImageNet via torchvision)
+- **Decoder**: FCN-32s (simplified, TorchVision style, no skip connections)
+- **Output**: Per-pixel classification with bilinear upsampling
 
-- **Total classes**: 11 (grouped from 32 original classes)
-- **Image size**: 480x352 (resized from original, divisible by 32)
-- **Format**: RGB images + RGB color-coded masks
-- **Split**: 70% train, 15% val, 15% test
+## Extending the Framework
 
-## Requirements
+### Add New Backbone (e.g., ResNet50)
 
-```bash
-pip install torch torchvision
-pip install albumentations
-pip install pillow numpy tqdm
+1. Create `models/backbones/resnet.py`:
+```python
+from .registry import BACKBONES
+
+@BACKBONES.register_module
+class ResNet50(nn.Module):
+    def __init__(self, pretrained=True):
+        # Implementation
+        self.out_channels = 2048
 ```
 
-## Notes
+2. Update config:
+```python
+backbone = dict(type='ResNet50', pretrained=True)
+```
 
-- Void pixels (class 255) are automatically ignored in loss calculation
-- Class weights help handle class imbalance
-- Using Albumentations for transforms ensures both image and mask are transformed identically
-- Dataset statistics computed from training set only
-- 11-class grouping follows MATLAB's SegNet methodology for better training
+### Add New Dataset (e.g., Cityscapes)
+
+1. Create `datasets/cityscapes.py`:
+```python
+from .registry import DATASETS
+
+@DATASETS.register_module
+class Cityscapes(BaseDataset):
+    # Implementation
+```
+
+2. Create `configs/cityscapes.py` with dataset configuration
+
+3. Run training:
+```bash
+python main.py configs/cityscapes.py
+```
+
+## Dataset Statistics
+
+- **Total images**: 701 images
+- **Train/Val/Test split**: 70% / 15% / 15%
+- **Image size**: 480×352 (resized from original, divisible by 32)
+- **Format**: RGB images + RGB color-coded masks
+- **Classes**: 11 classes + 1 void class (ignore_index=255)
+
+## Expected Results
+
+Example metrics on CamVid validation set:
+- Validation mIoU: ~0.65-0.70
+- Pixel Accuracy: ~0.90-0.92
+
+*Note: Results may vary depending on hyperparameters and training duration.*
+
+## Requirements
+```bash
+torch>=1.9.0
+torchvision>=0.10.0
+albumentations>=1.0.0
+pillow>=8.0.0
+numpy>=1.19.0
+tqdm>=4.60.0
+matplotlib>=3.3.0
+```
+
+## License
+
+Apache License 2.0
+
+## Acknowledgments
+
+- FCN implementation based on [TorchVision](https://github.com/pytorch/vision)
+- CamVid dataset: [University of Cambridge](http://mi.eng.cam.ac.uk/research/projects/VideoRec/CamVid/)
