@@ -42,9 +42,10 @@ DATASET_CONFIGS = {
 
 # Model settings
 BACKBONE = 'vgg16'  # 'vgg16', 'resnet50' (TODO), 'efficientnet' (TODO)
+FREEZE_BACKBONE = True
 
 # Training settings (following original FCN paper)
-BATCH_SIZE = 8
+BATCH_SIZE = 16
 EPOCHS = 200
 LR = 1e-3
 MOMENTUM = 0.9
@@ -287,7 +288,7 @@ def main(args=None):
 
     # Create model
     print(f"\nCreating FCN model with {BACKBONE} backbone...")
-    model = create_fcn_model(n_class=num_classes, backbone=BACKBONE, pretrained=True)
+    model = create_fcn_model(n_class=num_classes, backbone=BACKBONE, pretrained=True, freeze_backbone=FREEZE_BACKBONE)
     model = model.to(device)
 
     # Setup loss and optimizer (following original FCN paper)
@@ -350,8 +351,8 @@ def main(args=None):
         history['train_loss'].append(train_loss)
         history['train_pixel_acc'].append(train_pixel_acc)
         history['val_loss'].append(val_loss)
-        history['val_miou'].append(val_miou)
         history['val_pixel_acc'].append(val_pixel_acc)
+        history['val_miou'].append(val_miou)
 
         epoch_time = time.time() - epoch_start
 

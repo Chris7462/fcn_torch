@@ -45,7 +45,7 @@ class FCNs(nn.Module):
         return score  # size=(N, n_class, x.H/1, x.W/1)
 
 
-def create_fcn_model(n_class, backbone='vgg16', pretrained=True):
+def create_fcn_model(n_class, backbone='vgg16', pretrained=True, freeze_backbone=False):
     """
     Factory function to create FCN models with different backbones
 
@@ -53,6 +53,7 @@ def create_fcn_model(n_class, backbone='vgg16', pretrained=True):
         n_class: Number of output classes
         backbone: Backbone architecture ('vgg16', 'resnet50', 'efficientnet')
         pretrained: Whether to use pretrained weights
+        freeze_backbone: If True, freeze backbone weights (only train FCN head)
 
     Returns:
         FCNs model
@@ -63,15 +64,20 @@ def create_fcn_model(n_class, backbone='vgg16', pretrained=True):
         weights = VGG16_Weights.IMAGENET1K_V1 if pretrained else None
         vgg16 = models.vgg16(weights=weights)
 
-        # Extract features from pool3, pool4, pool5
-        return_layers = {
-            '16': 'x3',  # after 3rd maxpool (pool3)
-            '23': 'x4',  # after 4th maxpool (pool4)
-            '30': 'x5',  # after 5th maxpool (pool5)
-        }
-        backbone = IntermediateLayerGetter(vgg16.features, return_layers=return_layers)
+        # Freeze backbone if requested
+        if freeze_backbone:
+            for param in vgg16.features.parameters():
+                param.requires_grad = False
 
-        fcn_model = FCNs(pretrained_net=backbone, n_class=n_class)
+        # VGG16 features module uses string indices: '0', '1', '2', ...
+        return_layers = {
+            '16': 'x3',  # after 3rd maxpool (pool3) - index 16 in features
+            '23': 'x4',  # after 4th maxpool (pool4) - index 23 in features
+            '30': 'x5',  # after 5th maxpool (pool5) - index 30 in features
+        }
+        backbone_features = IntermediateLayerGetter(vgg16.features, return_layers=return_layers)
+
+        fcn_model = FCNs(pretrained_net=backbone_features, n_class=n_class)
         return fcn_model
 
     elif backbone == 'resnet50':
