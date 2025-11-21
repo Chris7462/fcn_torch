@@ -118,8 +118,7 @@ def create_camvid_dataloaders(
         batch_size=batch_size,
         shuffle=True,
         num_workers=num_workers,
-        pin_memory=True,
-        drop_last=True  # Drop last incomplete batch
+        pin_memory=True
     )
 
     val_loader = DataLoader(

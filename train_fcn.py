@@ -44,7 +44,7 @@ DATASET_CONFIGS = {
 BACKBONE = 'vgg16'  # 'vgg16', 'resnet50' (TODO), 'efficientnet' (TODO)
 
 # Training settings (following original FCN paper)
-BATCH_SIZE = 16
+BATCH_SIZE = 8
 EPOCHS = 200
 LR = 1e-3
 MOMENTUM = 0.9
