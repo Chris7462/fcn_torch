@@ -46,12 +46,16 @@ FREEZE_BACKBONE = True
 
 # Training settings (following original FCN paper)
 BATCH_SIZE = 16
-EPOCHS = 200
+EPOCHS = 500
 LR = 1e-3
 MOMENTUM = 0.9
 WEIGHT_DECAY = 5e-4
-STEP_SIZE = 50
-GAMMA = 0.5
+# STEP_SIZE = 50
+# GAMMA = 0.5
+# ReduceLROnPlateau settings
+LR_PATIENCE = 20        # Reduce LR if no improvement for 20 epochs
+LR_FACTOR = 0.5         # Multiply LR by 0.5 when reducing
+LR_MIN = 1e-6           # Minimum learning rate
 
 # Data settings
 NUM_WORKERS = 4
@@ -244,7 +248,8 @@ def main(args=None):
     n_class = config['n_class']
 
     # Experiment name
-    EXPERIMENT_NAME = f"FCNs-{BACKBONE}_{dataset_name}_batch{BATCH_SIZE}_epoch{EPOCHS}_SGD_lr{LR}_mom{MOMENTUM}_wd{WEIGHT_DECAY}"
+    # EXPERIMENT_NAME = f"FCNs-{BACKBONE}_{dataset_name}_batch{BATCH_SIZE}_epoch{EPOCHS}_SGD_lr{LR}_mom{MOMENTUM}_wd{WEIGHT_DECAY}"
+    EXPERIMENT_NAME = f"FCNs-{BACKBONE}_{dataset_name}_batch{BATCH_SIZE}_epoch{EPOCHS}_SGD_lr{LR}_mom{MOMENTUM}_wd{WEIGHT_DECAY}_ReduceLROnPlateau"
     print(f"Experiment: {EXPERIMENT_NAME}")
     print(f"Dataset: {dataset_name}")
 
@@ -294,13 +299,26 @@ def main(args=None):
     # Setup loss and optimizer (following original FCN paper)
     criterion = nn.CrossEntropyLoss(weight=class_weights, ignore_index=ignore_index)
     optimizer = optim.SGD(model.parameters(), lr=LR, momentum=MOMENTUM, weight_decay=WEIGHT_DECAY)
-    scheduler = lr_scheduler.StepLR(optimizer, step_size=STEP_SIZE, gamma=GAMMA)
+    # scheduler = lr_scheduler.StepLR(optimizer, step_size=STEP_SIZE, gamma=GAMMA)
+    # Use ReduceLROnPlateau scheduler
+    scheduler = lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode='max',              # Maximize validation mIoU
+        factor=LR_FACTOR,        # Multiply LR by this factor
+        patience=LR_PATIENCE,    # Wait this many epochs before reducing
+        min_lr=LR_MIN            # Minimum LR
+    )
 
     print(f"\nOptimizer: SGD")
     print(f"  Learning rate: {LR}")
     print(f"  Momentum: {MOMENTUM}")
     print(f"  Weight decay: {WEIGHT_DECAY}")
-    print(f"  LR Scheduler: StepLR (step_size={STEP_SIZE}, gamma={GAMMA})")
+    # print(f"  LR Scheduler: StepLR (step_size={STEP_SIZE}, gamma={GAMMA})")
+    print(f"  LR Scheduler: ReduceLROnPlateau")
+    print(f"    Mode: max (based on validation mIoU)")
+    print(f"    Patience: {LR_PATIENCE} epochs")
+    print(f"    Factor: {LR_FACTOR}")
+    print(f"    Min LR: {LR_MIN}")
 
     # Training state
     start_epoch = 0
@@ -343,8 +361,10 @@ def main(args=None):
             model, val_loader, criterion, device, num_classes, ignore_index, epoch, EPOCHS
         )
 
-        # Update learning rate
-        scheduler.step()
+        # # Update learning rate
+        # scheduler.step()
+        # Update learning rate based on validation mIoU
+        scheduler.step(val_miou)
         current_lr = optimizer.param_groups[0]['lr']
 
         # Update history
@@ -358,13 +378,9 @@ def main(args=None):
 
         # Print epoch summary
         print(f"\nEpoch {epoch+1}/{EPOCHS} Summary:")
-        print(f"  Time: {epoch_time:.2f}s")
         print(f"  LR: {current_lr:.6f}")
-        print(f"  Train Loss: {train_loss:.4f}")
-        print(f"  Train Pixel Acc: {train_pixel_acc:.4f}")
-        print(f"  Val Loss: {val_loss:.4f}")
-        print(f"  Val mIoU: {val_miou:.4f}")
-        print(f"  Val Pixel Acc: {val_pixel_acc:.4f}")
+        print(f"  Train loss: {train_loss:.4f}, Pixel Acc: {train_pixel_acc:.4f}")
+        print(f"  Val loss: {val_loss:.4f}, Pixel Acc: {val_pixel_acc:.4f}, mIoU: {val_miou:.4f}")
 
         # Check if this is the best model
         is_best = val_miou > best_miou
