@@ -41,12 +41,12 @@ DATASET_CONFIGS = {
 }
 
 # Model settings
-BACKBONE = 'vgg16'  # 'vgg16', 'resnet50' (TODO), 'efficientnet' (TODO)
+BACKBONE = 'resnet101'  # 'vgg16', 'resnet50' (TODO), 'resnet101', 'efficientnet' (TODO)
 FREEZE_BACKBONE = True
 
 # Training settings (following original FCN paper)
 BATCH_SIZE = 16
-EPOCHS = 500
+EPOCHS = 1000
 LR = 1e-3
 MOMENTUM = 0.9
 WEIGHT_DECAY = 5e-4
@@ -349,8 +349,6 @@ def main(args=None):
 
     # Training loop
     for epoch in range(start_epoch, EPOCHS):
-        epoch_start = time.time()
-
         # Train
         train_loss, train_pixel_acc = train_one_epoch(
             model, train_loader, criterion, optimizer, device, epoch, EPOCHS
@@ -374,8 +372,6 @@ def main(args=None):
         history['val_pixel_acc'].append(val_pixel_acc)
         history['val_miou'].append(val_miou)
 
-        epoch_time = time.time() - epoch_start
-
         # Print epoch summary
         print(f"\nEpoch {epoch+1}/{EPOCHS} Summary:")
         print(f"  LR: {current_lr:.6f}")
@@ -387,8 +383,8 @@ def main(args=None):
         if is_best:
             best_miou = val_miou
 
-        # Check if periodic checkpoint (every 10 epochs)
-        is_periodic = (epoch + 1) % 10 == 0
+        # Check if periodic checkpoint (every 50 epochs)
+        is_periodic = (epoch + 1) % 50 == 0
 
         # Prepare checkpoint
         checkpoint = {
@@ -425,18 +421,6 @@ def main(args=None):
     print("Training Complete!")
     print(f"Best Validation mIoU: {best_miou:.4f}")
     print("="*80)
-
-    # Save final model
-    final_model_path = os.path.join(MODEL_DIR, f'{EXPERIMENT_NAME}_final.pth')
-    torch.save({
-        'epoch': EPOCHS,
-        'model_state_dict': model.state_dict(),
-        'optimizer_state_dict': optimizer.state_dict(),
-        'scheduler_state_dict': scheduler.state_dict(),
-        'best_miou': best_miou,
-        'history': history
-    }, final_model_path)
-    print(f"\n✓ Final model saved to: {final_model_path}")
 
 
 if __name__ == '__main__':
