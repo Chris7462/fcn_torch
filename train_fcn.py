@@ -9,7 +9,6 @@ import torch.optim as optim
 from torch.optim import lr_scheduler
 import numpy as np
 import matplotlib.pyplot as plt
-import time
 import os
 from tqdm import tqdm
 
@@ -45,7 +44,7 @@ BACKBONE = 'resnet101'  # 'vgg16', 'resnet50' (TODO), 'resnet101', 'efficientnet
 FREEZE_BACKBONE = True
 
 # Training settings (following original FCN paper)
-BATCH_SIZE = 16
+BATCH_SIZE = 4
 EPOCHS = 1000
 LR = 1e-3
 MOMENTUM = 0.9
