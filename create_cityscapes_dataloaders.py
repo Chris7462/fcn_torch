@@ -49,9 +49,9 @@ def create_cityscapes_dataloaders(
     gtfine_dir,
     splits_dir,
     dataset_info_path,
-    batch_size=8,
+    batch_size=4,
     num_workers=4,
-    target_size=(2048, 1024)
+    target_size=(1024, 512)
 ):
     """
     Create train, validation, and test dataloaders for Cityscapes
@@ -171,7 +171,7 @@ if __name__ == '__main__':
         dataset_info_path=DATASET_INFO_PATH,
         batch_size=4,
         num_workers=4,
-        target_size=(2048, 1024)
+        target_size=(1024, 512)
     )
 
     # Access dataloaders

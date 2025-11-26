@@ -59,28 +59,28 @@ class FCNsResNet(nn.Module):
         self.n_class = n_class
         self.pretrained_net = pretrained_net
         self.relu = nn.ReLU(inplace=True)
-        
+
         # Upsampling path
         # layer4 (2048) -> layer3 (1024)
         self.deconv1 = nn.ConvTranspose2d(2048, 1024, kernel_size=3, stride=2, padding=1, dilation=1, output_padding=1)
         self.bn1     = nn.BatchNorm2d(1024)
-        
+
         # layer3 (1024) -> layer2 (512)
         self.deconv2 = nn.ConvTranspose2d(1024, 512, kernel_size=3, stride=2, padding=1, dilation=1, output_padding=1)
         self.bn2     = nn.BatchNorm2d(512)
-        
+
         # layer2 (512) -> layer1 (256)
         self.deconv3 = nn.ConvTranspose2d(512, 256, kernel_size=3, stride=2, padding=1, dilation=1, output_padding=1)
         self.bn3     = nn.BatchNorm2d(256)
-        
+
         # layer1 (256) -> H/2 (128)
         self.deconv4 = nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, padding=1, dilation=1, output_padding=1)
         self.bn4     = nn.BatchNorm2d(128)
-        
+
         # H/2 (128) -> H (64)
         self.deconv5 = nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1, dilation=1, output_padding=1)
         self.bn5     = nn.BatchNorm2d(64)
-        
+
         self.classifier = nn.Conv2d(64, n_class, kernel_size=1)
 
     def forward(self, x):
@@ -144,12 +144,12 @@ def create_fcn_model(n_class, backbone='vgg16', pretrained=True, freeze_backbone
         from torchvision.models import ResNet101_Weights
         weights = ResNet101_Weights.DEFAULT if pretrained else None  # Uses IMAGENET1K_V2
         resnet101 = models.resnet101(weights=weights)
-        
+
         # Freeze backbone if requested
         if freeze_backbone:
             for param in resnet101.parameters():
                 param.requires_grad = False
-        
+
         # Extract features from layer1, layer2, layer3, layer4
         # These correspond to conv2_x, conv3_x, conv4_x, conv5_x
         return_layers = {
@@ -159,7 +159,7 @@ def create_fcn_model(n_class, backbone='vgg16', pretrained=True, freeze_backbone
             'layer4': 'x4',  # conv5_x: (N, 2048, H/32, W/32)
         }
         backbone_features = IntermediateLayerGetter(resnet101, return_layers=return_layers)
-        
+
         fcn_model = FCNsResNet(pretrained_net=backbone_features, n_class=n_class)
         return fcn_model
 

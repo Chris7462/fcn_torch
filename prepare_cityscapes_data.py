@@ -25,7 +25,8 @@ TEST_RATIO = 0.1
 RANDOM_SEED = 42
 
 # Target image size (width, height) - keep original for now
-TARGET_SIZE = (2048, 1024)
+#TARGET_SIZE = (2048, 1024)
+TARGET_SIZE = (1024, 512)
 
 
 # Official Cityscapes 34 → 19 class mapping
