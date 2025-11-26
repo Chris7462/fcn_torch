@@ -15,7 +15,7 @@ from tqdm import tqdm
 from create_camvid_dataloaders import create_camvid_dataloaders
 from create_cityscapes_dataloaders import create_cityscapes_dataloaders
 from fcn import create_fcn_model
-from metrics import batch_iou, batch_pixel_acc
+from metrics import mean_iou, global_pixel_accuracy
 
 
 # ================== Configuration ==================
@@ -44,8 +44,8 @@ BACKBONE = 'resnet101'  # 'vgg16', 'resnet50' (TODO), 'resnet101', 'efficientnet
 FREEZE_BACKBONE = True
 
 # Training settings (following original FCN paper)
-BATCH_SIZE = 4
-EPOCHS = 1000
+BATCH_SIZE = 16
+EPOCHS = 500
 LR = 1e-3
 MOMENTUM = 0.9
 WEIGHT_DECAY = 5e-4
@@ -57,7 +57,7 @@ LR_FACTOR = 0.5         # Multiply LR by 0.5 when reducing
 LR_MIN = 1e-6           # Minimum learning rate
 
 # Data settings
-NUM_WORKERS = 4
+NUM_WORKERS = 12
 
 # Output directories
 MODEL_DIR = './models'
@@ -70,7 +70,10 @@ def train_one_epoch(model, train_loader, criterion, optimizer, device, epoch, to
     """Train for one epoch"""
     model.train()
     running_loss = 0.0
-    all_pixel_accs = []
+
+    # Accumulate predictions and targets for metrics
+    all_preds = []
+    all_targets = []
 
     pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{total_epochs} [Train]")
     for batch_idx, batch in enumerate(pbar):
@@ -88,18 +91,22 @@ def train_one_epoch(model, train_loader, criterion, optimizer, device, epoch, to
 
         running_loss += loss.item()
 
-        # Calculate training accuracy
+        # Accumulate predictions and targets
         with torch.no_grad():
             preds = outputs.argmax(dim=1).cpu().numpy()
             targets = masks.cpu().numpy()
-            batch_pix_acc = batch_pixel_acc(preds, targets, ignore_index)
-            all_pixel_accs.append(batch_pix_acc)
+            all_preds.append(preds)
+            all_targets.append(targets)
 
         # Update progress bar
-        pbar.set_postfix({'loss': f'{loss.item():.4f}', 'acc': f'{batch_pix_acc:.4f}'})
+        # pbar.set_postfix({'loss': f'{loss.item():.4f}'})
+
+    # Calculate metrics on accumulated predictions
+    all_preds = np.concatenate(all_preds, axis=0)
+    all_targets = np.concatenate(all_targets, axis=0)
+    avg_pixel_acc = global_pixel_accuracy(all_preds, all_targets, ignore_index)
 
     avg_loss = running_loss / len(train_loader)
-    avg_pixel_acc = np.mean(all_pixel_accs)
 
     return avg_loss, avg_pixel_acc
 
@@ -108,8 +115,10 @@ def validate(model, val_loader, criterion, device, n_class, ignore_index, epoch,
     """Validate the model"""
     model.eval()
     running_loss = 0.0
-    all_ious = []
-    all_pixel_accs = []
+
+    # Accumulate predictions and targets for metrics
+    all_preds = []
+    all_targets = []
 
     with torch.no_grad():
         pbar = tqdm(val_loader, desc=f"Epoch {epoch+1}/{total_epochs} [Val]  ")
@@ -122,27 +131,21 @@ def validate(model, val_loader, criterion, device, n_class, ignore_index, epoch,
             loss = criterion(outputs, masks)
             running_loss += loss.item()
 
-            # Get predictions
+            # Accumulate predictions and targets
             preds = outputs.argmax(dim=1).cpu().numpy()  # (N, H, W)
             targets = masks.cpu().numpy()  # (N, H, W)
-
-            # Calculate metrics (with ignore_index)
-            batch_ious = batch_iou(preds, targets, n_class, ignore_index)
-            batch_pix_acc = batch_pixel_acc(preds, targets, ignore_index)
-
-            all_ious.append(batch_ious)
-            all_pixel_accs.append(batch_pix_acc)
+            all_preds.append(preds)
+            all_targets.append(targets)
 
     avg_loss = running_loss / len(val_loader)
 
-    # Calculate mean IoU (ignore nan values for classes not present)
-    all_ious = np.array(all_ious)  # (num_batches, n_class)
-    mean_ious = np.nanmean(all_ious, axis=0)  # (n_class,)
-    mean_iou = np.nanmean(mean_ious)
+    # Calculate metrics on accumulated predictions
+    all_preds = np.concatenate(all_preds, axis=0)
+    all_targets = np.concatenate(all_targets, axis=0)
+    mean_iou_val = mean_iou(all_preds, all_targets, n_class, ignore_index)
+    mean_pixel_acc = global_pixel_accuracy(all_preds, all_targets, ignore_index)
 
-    mean_pixel_acc = np.mean(all_pixel_accs)
-
-    return avg_loss, mean_iou, mean_pixel_acc, mean_ious
+    return avg_loss, mean_iou_val, mean_pixel_acc
 
 
 def plot_training_history(history, save_dir, experiment_name):
@@ -354,7 +357,7 @@ def main(args=None):
         )
 
         # Validate
-        val_loss, val_miou, val_pixel_acc, class_ious = validate(
+        val_loss, val_miou, val_pixel_acc = validate(
             model, val_loader, criterion, device, num_classes, ignore_index, epoch, EPOCHS
         )
 

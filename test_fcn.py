@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 
 from create_camvid_dataloaders import create_camvid_dataloaders
 from fcn import create_fcn_model
-from metrics import batch_iou, batch_pixel_acc
+from metrics import mean_iou, global_pixel_accuracy, class_pixel_accuracy
 
 
 def get_color_mapping():
@@ -92,8 +92,10 @@ def test_model(model, test_loader, criterion, device, n_class, ignore_index,
     os.makedirs(vis_dir, exist_ok=True)
 
     running_loss = 0.0
-    all_ious = []
-    all_pixel_accs = []
+
+    # Accumulate predictions and targets for metrics
+    all_preds = []
+    all_targets = []
 
     print("\nRunning inference on test set...")
 
@@ -113,12 +115,9 @@ def test_model(model, test_loader, criterion, device, n_class, ignore_index,
             targets = masks.cpu().numpy()  # (N, H, W)
             images_np = images.cpu().numpy()  # (N, 3, H, W)
 
-            # Calculate metrics (with ignore_index)
-            batch_ious = batch_iou(preds, targets, n_class, ignore_index)
-            batch_pix_acc = batch_pixel_acc(preds, targets, ignore_index)
-
-            all_ious.append(batch_ious)
-            all_pixel_accs.append(batch_pix_acc)
+            # Accumulate for metrics calculation
+            all_preds.append(preds)
+            all_targets.append(targets)
 
             # Save predictions for each image in batch
             for i in range(len(filenames)):
@@ -173,26 +172,24 @@ def test_model(model, test_loader, criterion, device, n_class, ignore_index,
                 plt.savefig(vis_path, dpi=150, bbox_inches='tight')
                 plt.close()
 
-    # Calculate final metrics
+    # Calculate final metrics on accumulated predictions
     avg_loss = running_loss / len(test_loader)
 
-    # Calculate mean IoU per class
-    all_ious = np.array(all_ious)  # (num_batches, n_class)
-    mean_ious = np.nanmean(all_ious, axis=0)  # (n_class,)
-    mean_iou = np.nanmean(mean_ious)
+    all_preds = np.concatenate(all_preds, axis=0)
+    all_targets = np.concatenate(all_targets, axis=0)
 
-    mean_pixel_acc = np.mean(all_pixel_accs)
+    mean_iou_val = mean_iou(all_preds, all_targets, n_class, ignore_index)
+    mean_pixel_acc = global_pixel_accuracy(all_preds, all_targets, ignore_index)
+    class_pix_acc = class_pixel_accuracy(all_preds, all_targets, n_class, ignore_index)
 
     # Print results
     print("\n" + "="*80)
     print("Test Results")
     print("="*80)
-    print(f"Test Loss:       {avg_loss:.4f}")
-    print(f"Test mIoU:       {mean_iou:.4f}")
+    print(f"Test Loss:  {avg_loss:.4f}")
+    print(f"Test mIoU:  {mean_iou_val:.4f}")
     print(f"Test Pixel Acc:  {mean_pixel_acc:.4f}")
-    print("\nPer-class IoU:")
-    for idx, (name, iou) in enumerate(zip(class_names, mean_ious)):
-        print(f"  {idx:2d}. {name:15s}: {iou:.4f}")
+    print(f"Test Class Pixel Acc:  {class_pix_acc:.4f}")
     print("="*80)
 
     print(f"\n✓ Predictions saved to: {pred_dir}")
@@ -200,9 +197,9 @@ def test_model(model, test_loader, criterion, device, n_class, ignore_index,
 
     return {
         'test_loss': avg_loss,
-        'test_miou': mean_iou,
+        'test_miou': mean_iou_val,
         'test_pixel_acc': mean_pixel_acc,
-        'per_class_iou': mean_ious.tolist()
+        'test_class_pixel_acc': class_pix_acc
     }
 
 
