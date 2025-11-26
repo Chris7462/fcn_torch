@@ -35,7 +35,7 @@ DATASET_CONFIGS = {
         'gtfine_dir': './Cityscapes/gtFine',
         'splits_dir': './Cityscapes/splits',
         'dataset_info_path': './Cityscapes/splits/dataset_info.json',
-        'target_size': (2048, 1024),
+        'target_size': (1024, 512),
         'n_class': 19
     }
 }
@@ -67,7 +67,7 @@ os.makedirs(MODEL_DIR, exist_ok=True)
 os.makedirs(PLOT_DIR, exist_ok=True)
 
 
-def train_one_epoch(model, train_loader, criterion, optimizer, device, epoch, total_epochs):
+def train_one_epoch(model, train_loader, criterion, optimizer, device, epoch, total_epochs, ignore_index):
     """Train for one epoch"""
     model.train()
     running_loss = 0.0
@@ -93,7 +93,7 @@ def train_one_epoch(model, train_loader, criterion, optimizer, device, epoch, to
         with torch.no_grad():
             preds = outputs.argmax(dim=1).cpu().numpy()
             targets = masks.cpu().numpy()
-            batch_pix_acc = batch_pixel_acc(preds, targets)
+            batch_pix_acc = batch_pixel_acc(preds, targets, ignore_index)
             all_pixel_accs.append(batch_pix_acc)
 
         # Update progress bar
@@ -127,9 +127,9 @@ def validate(model, val_loader, criterion, device, n_class, ignore_index, epoch,
             preds = outputs.argmax(dim=1).cpu().numpy()  # (N, H, W)
             targets = masks.cpu().numpy()  # (N, H, W)
 
-            # Calculate metrics (ignore void class)
-            batch_ious = batch_iou(preds, targets, n_class)
-            batch_pix_acc = batch_pixel_acc(preds, targets)
+            # Calculate metrics (with ignore_index)
+            batch_ious = batch_iou(preds, targets, n_class, ignore_index)
+            batch_pix_acc = batch_pixel_acc(preds, targets, ignore_index)
 
             all_ious.append(batch_ious)
             all_pixel_accs.append(batch_pix_acc)
@@ -351,7 +351,7 @@ def main(args=None):
     for epoch in range(start_epoch, EPOCHS):
         # Train
         train_loss, train_pixel_acc = train_one_epoch(
-            model, train_loader, criterion, optimizer, device, epoch, EPOCHS
+            model, train_loader, criterion, optimizer, device, epoch, EPOCHS, ignore_index
         )
 
         # Validate

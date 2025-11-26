@@ -113,9 +113,9 @@ def test_model(model, test_loader, criterion, device, n_class, ignore_index,
             targets = masks.cpu().numpy()  # (N, H, W)
             images_np = images.cpu().numpy()  # (N, 3, H, W)
 
-            # Calculate metrics
-            batch_ious = batch_iou(preds, targets, n_class)
-            batch_pix_acc = batch_pixel_acc(preds, targets)
+            # Calculate metrics (with ignore_index)
+            batch_ious = batch_iou(preds, targets, n_class, ignore_index)
+            batch_pix_acc = batch_pixel_acc(preds, targets, ignore_index)
 
             all_ious.append(batch_ious)
             all_pixel_accs.append(batch_pix_acc)
