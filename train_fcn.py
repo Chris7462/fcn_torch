@@ -1,6 +1,7 @@
 """
 FCN Training Script for CamVid and Cityscapes Datasets
 Following original FCN paper training settings
+Updated to use all 4 FCN metrics: pixel accuracy, mean accuracy, mIoU, and f.w. IoU
 """
 
 import torch
@@ -15,7 +16,7 @@ from tqdm import tqdm
 from create_camvid_dataloaders import create_camvid_dataloaders
 from create_cityscapes_dataloaders import create_cityscapes_dataloaders
 from fcn import create_fcn_model
-from metrics import mean_iou, global_pixel_accuracy
+from metrics import mean_iou, pixel_accuracy, mean_pixel_accuracy, frequency_weighted_iou
 
 
 # ================== Configuration ==================
@@ -66,7 +67,7 @@ os.makedirs(MODEL_DIR, exist_ok=True)
 os.makedirs(PLOT_DIR, exist_ok=True)
 
 
-def train_one_epoch(model, train_loader, criterion, optimizer, device, epoch, total_epochs, ignore_index):
+def train_one_epoch(model, train_loader, criterion, optimizer, device, epoch, total_epochs, n_class, ignore_index):
     """Train for one epoch"""
     model.train()
     running_loss = 0.0
@@ -104,11 +105,15 @@ def train_one_epoch(model, train_loader, criterion, optimizer, device, epoch, to
     # Calculate metrics on accumulated predictions
     all_preds = np.concatenate(all_preds, axis=0)
     all_targets = np.concatenate(all_targets, axis=0)
-    avg_pixel_acc = global_pixel_accuracy(all_preds, all_targets, ignore_index)
 
     avg_loss = running_loss / len(train_loader)
+    avg_iou = mean_iou(all_preds, all_targets, n_class, ignore_index)
+    avg_pixel_acc = pixel_accuracy(all_preds, all_targets, ignore_index)
+    avg_mean_acc = mean_pixel_accuracy(all_preds, all_targets, n_class, ignore_index)
+    avg_fwiou = frequency_weighted_iou(all_preds, all_targets, n_class, ignore_index)
 
-    return avg_loss, avg_pixel_acc
+
+    return avg_loss, avg_pixel_acc, avg_mean_acc, avg_iou, avg_fwiou
 
 
 def validate(model, val_loader, criterion, device, n_class, ignore_index, epoch, total_epochs):
@@ -137,15 +142,17 @@ def validate(model, val_loader, criterion, device, n_class, ignore_index, epoch,
             all_preds.append(preds)
             all_targets.append(targets)
 
-    avg_loss = running_loss / len(val_loader)
-
     # Calculate metrics on accumulated predictions
     all_preds = np.concatenate(all_preds, axis=0)
     all_targets = np.concatenate(all_targets, axis=0)
-    mean_iou_val = mean_iou(all_preds, all_targets, n_class, ignore_index)
-    mean_pixel_acc = global_pixel_accuracy(all_preds, all_targets, ignore_index)
 
-    return avg_loss, mean_iou_val, mean_pixel_acc
+    avg_loss = running_loss / len(val_loader)
+    avg_iou = mean_iou(all_preds, all_targets, n_class, ignore_index)
+    avg_pixel_acc = pixel_accuracy(all_preds, all_targets, ignore_index)
+    avg_mean_acc = mean_pixel_accuracy(all_preds, all_targets, n_class, ignore_index)
+    avg_fwiou = frequency_weighted_iou(all_preds, all_targets, n_class, ignore_index)
+
+    return avg_loss, avg_pixel_acc, avg_mean_acc, avg_iou, avg_fwiou
 
 
 def plot_training_history(history, save_dir, experiment_name):
@@ -153,8 +160,8 @@ def plot_training_history(history, save_dir, experiment_name):
     Plot training and validation loss and metrics curves.
 
     Args:
-        history: Dictionary with keys 'train_loss', 'train_pixel_acc', 'val_loss',
-                'val_pixel_acc', 'val_miou'
+        history: Dictionary with keys 'train_loss', 'train_pixel_acc', 'train_mean_acc',
+                'train_fwiou', 'val_loss', 'val_pixel_acc', 'val_mean_acc', 'val_miou', 'val_fwiou'
         save_dir: Directory to save the plot
         experiment_name: Name for the saved file
     """
@@ -162,34 +169,58 @@ def plot_training_history(history, save_dir, experiment_name):
     matplotlib.use('Agg')
     plt.style.use('ggplot')
 
-    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+    fig, axes = plt.subplots(2, 2, figsize=(15, 12))
 
     num_epochs = len(history['train_loss'])
     epochs_range = np.arange(1, num_epochs + 1)
 
     # Plot 1: Loss
-    axes[0].plot(epochs_range, history['train_loss'], label='Train Loss',
-                 marker='o', markersize=3, linewidth=2)
-    axes[0].plot(epochs_range, history['val_loss'], label='Val Loss',
-                 marker='s', markersize=3, linewidth=2)
-    axes[0].set_title('Training and Validation Loss', fontsize=14, fontweight='bold')
-    axes[0].set_xlabel('Epoch #', fontsize=12)
-    axes[0].set_ylabel('Loss', fontsize=12)
-    axes[0].legend(fontsize=11)
-    axes[0].grid(True, alpha=0.3)
+    axes[0, 0].plot(epochs_range, history['train_loss'], label='Train Loss',
+                    marker='o', markersize=3, linewidth=2)
+    axes[0, 0].plot(epochs_range, history['val_loss'], label='Val Loss',
+                    marker='s', markersize=3, linewidth=2)
+    axes[0, 0].set_title('Training and Validation Loss', fontsize=14, fontweight='bold')
+    axes[0, 0].set_xlabel('Epoch #', fontsize=12)
+    axes[0, 0].set_ylabel('Loss', fontsize=12)
+    axes[0, 0].legend(fontsize=11)
+    axes[0, 0].grid(True, alpha=0.3)
 
-    # Plot 2: Metrics (Pixel Accuracy and mIoU)
-    axes[1].plot(epochs_range, history['train_pixel_acc'], label='Train Pixel Acc',
-                 marker='o', markersize=3, linewidth=2)
-    axes[1].plot(epochs_range, history['val_pixel_acc'], label='Val Pixel Acc',
-                 marker='s', markersize=3, linewidth=2)
-    axes[1].plot(epochs_range, history['val_miou'], label='Val mIoU',
-                 marker='^', markersize=3, linewidth=2, linestyle='--')
-    axes[1].set_title('Training and Validation Metrics', fontsize=14, fontweight='bold')
-    axes[1].set_xlabel('Epoch #', fontsize=12)
-    axes[1].set_ylabel('Score', fontsize=12)
-    axes[1].legend(fontsize=11)
-    axes[1].grid(True, alpha=0.3)
+    # Plot 2: Pixel Accuracy
+    axes[0, 1].plot(epochs_range, history['train_pixel_acc'], label='Train Pixel Acc',
+                    marker='o', markersize=3, linewidth=2)
+    axes[0, 1].plot(epochs_range, history['val_pixel_acc'], label='Val Pixel Acc',
+                    marker='s', markersize=3, linewidth=2)
+    axes[0, 1].set_title('Pixel Accuracy', fontsize=14, fontweight='bold')
+    axes[0, 1].set_xlabel('Epoch #', fontsize=12)
+    axes[0, 1].set_ylabel('Accuracy', fontsize=12)
+    axes[0, 1].legend(fontsize=11)
+    axes[0, 1].grid(True, alpha=0.3)
+
+    # Plot 3: Mean Accuracy
+    axes[1, 0].plot(epochs_range, history['train_mean_acc'], label='Train Mean Acc',
+                    marker='o', markersize=3, linewidth=2)
+    axes[1, 0].plot(epochs_range, history['val_mean_acc'], label='Val Mean Acc',
+                    marker='s', markersize=3, linewidth=2)
+    axes[1, 0].set_title('Mean Accuracy (Per-Class Average)', fontsize=14, fontweight='bold')
+    axes[1, 0].set_xlabel('Epoch #', fontsize=12)
+    axes[1, 0].set_ylabel('Accuracy', fontsize=12)
+    axes[1, 0].legend(fontsize=11)
+    axes[1, 0].grid(True, alpha=0.3)
+
+    # Plot 4: IoU Metrics (mIoU and f.w. IoU)
+    axes[1, 1].plot(epochs_range, history['train_miou'], label='Train mIoU',
+                    marker='o', markersize=3, linewidth=2)
+    axes[1, 1].plot(epochs_range, history['val_miou'], label='Val mIoU',
+                    marker='s', markersize=3, linewidth=2)
+    axes[1, 1].plot(epochs_range, history['train_fwiou'], label='Train f.w. IoU',
+                    marker='o', markersize=3, linewidth=2, linestyle='--')
+    axes[1, 1].plot(epochs_range, history['val_fwiou'], label='Val f.w. IoU',
+                    marker='s', markersize=3, linewidth=2, linestyle='--')
+    axes[1, 1].set_title('IoU Metrics', fontsize=14, fontweight='bold')
+    axes[1, 1].set_xlabel('Epoch #', fontsize=12)
+    axes[1, 1].set_ylabel('IoU Score', fontsize=12)
+    axes[1, 1].legend(fontsize=11)
+    axes[1, 1].grid(True, alpha=0.3)
 
     plt.tight_layout()
 
@@ -328,9 +359,14 @@ def main(args=None):
     history = {
         'train_loss': [],
         'train_pixel_acc': [],
+        'train_mean_acc': [],
+        'train_miou': [],
+        'train_fwiou': [],
         'val_loss': [],
+        'val_pixel_acc': [],
+        'val_mean_acc': [],
         'val_miou': [],
-        'val_pixel_acc': []
+        'val_fwiou': []
     }
 
     # Load checkpoint if resuming
@@ -352,12 +388,12 @@ def main(args=None):
     # Training loop
     for epoch in range(start_epoch, EPOCHS):
         # Train
-        train_loss, train_pixel_acc = train_one_epoch(
-            model, train_loader, criterion, optimizer, device, epoch, EPOCHS, ignore_index
+        train_loss, train_pixel_acc, train_mean_acc, train_miou, train_fwiou = train_one_epoch(
+            model, train_loader, criterion, optimizer, device, epoch, EPOCHS, num_classes, ignore_index
         )
 
         # Validate
-        val_loss, val_miou, val_pixel_acc = validate(
+        val_loss, val_pixel_acc, val_mean_acc, val_miou, val_fwiou = validate(
             model, val_loader, criterion, device, num_classes, ignore_index, epoch, EPOCHS
         )
 
@@ -370,15 +406,20 @@ def main(args=None):
         # Update history
         history['train_loss'].append(train_loss)
         history['train_pixel_acc'].append(train_pixel_acc)
+        history['train_mean_acc'].append(train_mean_acc)
+        history['train_miou'].append(train_miou)
+        history['train_fwiou'].append(train_fwiou)
         history['val_loss'].append(val_loss)
         history['val_pixel_acc'].append(val_pixel_acc)
+        history['val_mean_acc'].append(val_mean_acc)
         history['val_miou'].append(val_miou)
+        history['val_fwiou'].append(val_fwiou)
 
         # Print epoch summary
         print(f"\nEpoch {epoch+1}/{EPOCHS} Summary:")
         print(f"  LR: {current_lr:.6f}")
-        print(f"  Train loss: {train_loss:.4f}, Pixel Acc: {train_pixel_acc:.4f}")
-        print(f"  Val loss: {val_loss:.4f}, Pixel Acc: {val_pixel_acc:.4f}, mIoU: {val_miou:.4f}")
+        print(f"  Train - loss: {train_loss:.4f}, Pixel Acc: {train_pixel_acc:.4f}, Mean Acc: {train_mean_acc:.4f}, mIoU: {train_miou:.4f}, f.w. IoU: {train_fwiou:.4f}")
+        print(f"  Val   - loss: {val_loss:.4f}, Pixel Acc: {val_pixel_acc:.4f}, Mean Acc: {val_mean_acc:.4f}, mIoU: {val_miou:.4f}, f.w. IoU: {val_fwiou:.4f}")
 
         # Check if this is the best model
         is_best = val_miou > best_miou

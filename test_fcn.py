@@ -1,6 +1,7 @@
 """
 Test FCN Model on CamVid Test Dataset
 Evaluates a trained model and generates predictions
+Updated to use all 4 FCN metrics and per-class IoU
 """
 
 import torch
@@ -14,7 +15,7 @@ import matplotlib.pyplot as plt
 
 from create_camvid_dataloaders import create_camvid_dataloaders
 from fcn import create_fcn_model
-from metrics import mean_iou, global_pixel_accuracy, class_pixel_accuracy
+from metrics import pixel_accuracy, mean_pixel_accuracy, mean_iou, frequency_weighted_iou, iou_per_class
 
 
 def get_color_mapping():
@@ -179,27 +180,50 @@ def test_model(model, test_loader, criterion, device, n_class, ignore_index,
     all_targets = np.concatenate(all_targets, axis=0)
 
     mean_iou_val = mean_iou(all_preds, all_targets, n_class, ignore_index)
-    mean_pixel_acc = global_pixel_accuracy(all_preds, all_targets, ignore_index)
-    class_pix_acc = class_pixel_accuracy(all_preds, all_targets, n_class, ignore_index)
-
+    pixel_acc = pixel_accuracy(all_preds, all_targets, ignore_index)
+    mean_acc = mean_pixel_accuracy(all_preds, all_targets, n_class, ignore_index)
+    fwiou = frequency_weighted_iou(all_preds, all_targets, n_class, ignore_index)
+    # Compute per-class IoU using the extended function from metrics
+    per_class_iou = iou_per_class(all_preds, all_targets, n_class, ignore_index)
     # Print results
     print("\n" + "="*80)
     print("Test Results")
     print("="*80)
-    print(f"Test Loss:  {avg_loss:.4f}")
-    print(f"Test mIoU:  {mean_iou_val:.4f}")
-    print(f"Test Pixel Acc:  {mean_pixel_acc:.4f}")
-    print(f"Test Class Pixel Acc:  {class_pix_acc:.4f}")
+    print(f"Test Loss:                    {avg_loss:.4f}")
+    print(f"Mean IoU (mIoU):              {mean_iou_val:.4f}")
+    print(f"Pixel Accuracy:               {pixel_acc:.4f}")
+    print(f"Mean Pixel Accuracy:          {mean_acc:.4f}")
+    print(f"Frequency Weighted IoU:       {fwiou:.4f}")
     print("="*80)
 
-    print(f"\n✓ Predictions saved to: {pred_dir}")
-    print(f"✓ Visualizations saved to: {vis_dir}")
+    # Print per-class IoU
+    print(f"\nPer-Class IoU:")
+    for cls_id, (cls_name, cls_iou) in enumerate(zip(class_names, per_class_iou)):
+        if np.isnan(cls_iou):
+            print(f"  {cls_id:2d}. {cls_name:20s}: N/A (not in dataset)")
+        else:
+            print(f"  {cls_id:2d}. {cls_name:20s}: {cls_iou:.4f}")
+
+    print("\n" + "="*80)
+
+    # Interpretation guidance
+    if pixel_acc > mean_acc + 0.05:
+        print("\nNote: Pixel Accuracy >> Mean Pixel Accuracy")
+        print("  This suggests the model performs well on frequent classes")
+        print("  but may struggle with rare classes.")
+        print()
+
+    print(f"\nPredictions saved to: {pred_dir}")
+    print(f"Visualizations saved to: {vis_dir}")
 
     return {
         'test_loss': avg_loss,
         'test_miou': mean_iou_val,
-        'test_pixel_acc': mean_pixel_acc,
-        'test_class_pixel_acc': class_pix_acc
+        'test_pixel_acc': pixel_acc,
+        'test_mean_acc': mean_acc,
+        'test_fwiou': fwiou,
+        'per_class_iou': {name: float(iou) if not np.isnan(iou) else None 
+                          for name, iou in zip(class_names, per_class_iou)}
     }
 
 
@@ -290,6 +314,12 @@ def main():
         mean=mean,
         std=std
     )
+
+    # Save results to JSON
+    results_path = os.path.join(output_dir, 'test_results.json')
+    with open(results_path, 'w') as f:
+        json.dump(results, f, indent=2)
+    print(f"\n✓ Results saved to: {results_path}")
 
 
 if __name__ == '__main__':
