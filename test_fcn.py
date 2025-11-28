@@ -18,6 +18,10 @@ from fcn import create_fcn_model
 from metrics import pixel_accuracy, mean_pixel_accuracy, mean_iou, frequency_weighted_iou, iou_per_class
 
 
+# Model settings
+BACKBONE = 'resnet101'  # 'vgg16', 'resnet50' (TODO), 'resnet101', 'efficientnet' (TODO)
+
+
 def get_color_mapping():
     """
     Returns the RGB color for each of the 11 classes
@@ -283,8 +287,8 @@ def main():
     print(f"Test set size: {len(test_loader.dataset)} images")
 
     # Create model
-    print("\nCreating model...")
-    model = create_fcn_model(n_class=num_classes, backbone='vgg16', pretrained=False)
+    print(f"\nCreating FCN model with {BACKBONE} backbone...")
+    model = create_fcn_model(n_class=num_classes, backbone=BACKBONE, pretrained=False)
     model.load_state_dict(checkpoint['model_state_dict'])
     model = model.to(device)
     print("Model loaded successfully!")
